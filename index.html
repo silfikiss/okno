@@ -60,11 +60,13 @@ body.tg header{display:none}
 body.tg .window{width:100%}
 </style>
 
+<!-- фильтр «нарисованный» (сейчас не используется на пульте) -->
 </head>
 <body>
 <svg width="0" height="0" style="position:absolute" aria-hidden="true"><filter id="sketch" x="0" y="0" width="100%" height="100%">
 <feTurbulence type="fractalNoise" baseFrequency=".035" numOctaves="2" seed="4" result="n"/><feDisplacementMap in="SourceGraphic" in2="n" scale="5"/></filter></svg>
 
+<!-- Разметка страницы: заголовок, окно (холст с видом + две створки), подоконник, пульт -->
 <div class="room">
   <header><h1>Окно</h1><div id="readout"></div></header>
 
@@ -77,6 +79,7 @@ body.tg .window{width:100%}
     <div class="sill"></div>
   </div>
 
+  <!-- Пульт: кнопки создаются скриптом (функция chips), здесь только места для них -->
   <div class="panel">
     <div class="ctl"><span>Время года</span><div class="row" id="season"></div><div class="row" id="month"></div></div>
     <div class="ctl"><label for="time">Время суток</label>
@@ -92,41 +95,77 @@ body.tg .window{width:100%}
 </div>
 
 <script>
+/* =====================================================================
+   ОКНО — вид из окна на Москву (МГУ, Сити, цирк, Останкино)
+   Как устроен этот файл (сверху вниз):
+     1. ОБЩЕЕ          — размеры картинки, состояние S (что сейчас выбрано), мелкие помощники для цвета
+     2. СВЕТ И НЕБО    — цвета неба по времени суток, погода (WX), свет (MOOD), солнце над Москвой
+     3. ПРИМИТИВЫ      — как рисуются прямоугольники, многоугольники, окна домов
+     4. ГОРОД          — дома, МГУ, Москва-Сити, цирк, кирпичный дом с карнизом, улица справа
+     5. ДЕРЕВЬЯ        — клёны, ветки, листья, ветер
+     6. КАДР           — небо, звёзды, облака, провода, дым, дождь и снег; всё собирается в frame()
+     7. МУЗЫКА         — тишина или свой файл
+     8. УПРАВЛЕНИЕ     — кнопки пульта, прогноз погоды
+   Координаты: вся картинка рисуется в «пикселях панорамы» 2270×1116 (с неё срисован вид),
+   окно показывает её кусок, начиная с точки VX,VY, с увеличением VS.
+   ===================================================================== */
+
+/* ---------- 1. ОБЩЕЕ ---------- */
+// W,H — размер исходной панорамы; cv/ctx — холст в окне, на котором всё рисуется
 const W=2270,H=1116,cv=document.getElementById('view'),ctx=cv.getContext('2d');
 // холст рисуется в том размере, в каком его видно на экране (не больше 1320), — меньше лишних пикселей, быстрее кадр
 const CS=Math.max(560,Math.min(1320,Math.round(Math.min(innerWidth,innerHeight*.82)*Math.min(2,devicePixelRatio||1)/40)*40)),VX=198,VY=130,VS=CS/1020;document.getElementById('view').width=document.getElementById('view').height=CS;const city=document.createElement('canvas');city.width=CS;city.height=CS;const cc=city.getContext('2d');
+// текущее время в часах, например 19.5 = 19:30
 const nowH=()=>{const d=new Date();return d.getHours()+d.getMinutes()/60};
+// какие осадки включены: дождь, снег или оба сразу (мокрый снег); PWEAK — слабый зимний дождь
 const PK=()=>S.rain&&S.snowfall?'sleet':S.rain?'rain':S.snowfall?'snow':null,PWEAK=()=>S.rain&&(S.season==='winter');
 const SG=x=>x==='fav'?'spring':x;   // март (голые ветки) показывается как часть весны
 const MSEASON0=m=>m===3?'fav':m<=2||m===12?'winter':m<=5?'spring':m<=8?'summer':'autumn';
+// S — состояние: всё, что выбрано на пульте. Любая кнопка меняет S и вызывает refresh()
+//   time — время в часах, live — идти вместе с часами, season/month — время года и месяц,
+//   weather — небо (ясно, облачно…), rain/snowfall/windy — дождь, снег, ветер поверх неба,
+//   mood — свет (обычный, тусклый…), music — звук, open — окно открыто
 const S={time:nowH(),live:true,season:MSEASON0(new Date().getMonth()+1),month:new Date().getMonth()+1,weather:'clear',mood:'calm',music:'off',windy:false,rain:false,snowfall:false,drawn:false,open:false};
+// пользователь просил меньше анимации в настройках системы — тогда картинка почти не движется
 const RM=matchMedia('(prefers-reduced-motion: reduce)').matches;
 
+// rng — случайные числа, но всегда одинаковые при одном «зерне»: дома и деревья не меняются при перезагрузке
 function rng(s){return()=>{s|=0;s=s+0x6D2B79F5|0;let t=Math.imul(s^s>>>15,1|s);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
+// работа с цветом: hx — '#rrggbb' в числа, mix — смешать два цвета, css — числа обратно в цвет, clamp — ограничить 0…1
 const hx=h=>[parseInt(h.slice(1,3),16),parseInt(h.slice(3,5),16),parseInt(h.slice(5,7),16)];
 const mix=(a,b,t)=>[a[0]+(b[0]-a[0])*t,a[1]+(b[1]-a[1])*t,a[2]+(b[2]-a[2])*t];
 const css=(c,a=1)=>`rgba(${Math.max(0,Math.min(255,c[0]))|0},${Math.max(0,Math.min(255,c[1]))|0},${Math.max(0,Math.min(255,c[2]))|0},${a})`;
 const clamp=(v,a=0,b=1)=>Math.max(a,Math.min(b,v));
 
-/* ---------- свет и небо ---------- */
+/* ---------- 2. СВЕТ И НЕБО ---------- */
+// KEY — цвет неба по «условным» часам: [час, цвет сверху, цвет у горизонта, сколько света]
+//   условный день: восход в 6.3, закат в 18.5, полная ночь после 21.5 (реальное время переводит canon())
 const KEY=[[0,'#070b1c','#151a33',.1],[4.5,'#0d1330','#2a2748',.14],[6,'#3c5a9c','#f0a884',.5],[8,'#5d9ae0','#d6e6f5',.9],[13,'#4a8fe4','#cfe6fa',1],[17,'#6aa2e8','#f1e2cc',.92],[18.7,'#5b7fc4','#f7a86e',.58],[20,'#272e5e','#8a5670',.28],[21.5,'#0b1028','#1e2344',.14],[24,'#070b1c','#151a33',.1]];
+// WX — варианты неба. n — подпись на кнопке, cover — сколько облаков (0…1), gm — насколько серо,
+//   wind — сила ветра, seasons — только в эти времена года, not — кроме этих, hide — не показывать кнопку
 const WX={clear:{n:'Ясно',cover:0,gm:0,wind:1},cloudy:{n:'Облачно',cover:.7,gm:0,wind:1.1},rain:{n:'Дождь',cover:1,gm:.86,wind:1.6,hide:1},sleet:{n:'Мокрый снег',cover:1,gm:.84,wind:1.4,hide:1},
   snow:{n:'Снег',cover:.9,gm:.62,wind:.9,hide:1},fog:{n:'Туман',cover:0,gm:.9,wind:.5},storm:{n:'Гроза',cover:1,gm:.88,wind:2.6,not:['winter']},
   overcast:{n:'Пасмурно',cover:0,gm:.3,wind:.9,seasons:['autumn']},frost:{n:'Иней',cover:0,gm:.15,wind:.35,seasons:['winter','fav']},frosty:{n:'Морозное небо',cover:0,gm:0,wind:.5,seasons:['winter']},crimson:{n:'Малиновый закат',cover:0,gm:0,wind:.8},warm:{n:'Тёплое небо',cover:0,gm:0,wind:.8,seasons:['summer']}};   // у некоторых погод свои времена года
+// MOOD — блок «Свет»: f — фильтр поверх картинки (яркость, насыщенность), smoke — дымная пелена, haze — розовая дымка
 const MOOD={calm:{n:'Обычный',f:'',wind:1},sad:{n:'Тусклый',f:'saturate(.45) brightness(.86)',wind:1},
   joy:{n:'Яркий',f:'saturate(1.35) brightness(1.1) contrast(1.05)',wind:1},anx:{n:'Дым',f:'saturate(.7) contrast(.9) sepia(.25)',wind:1,smoke:1},
   dream:{n:'Мечтательное',f:'saturate(1.2) hue-rotate(20deg) brightness(1.04)',wind:.55,haze:1}};
+// TR — встроенные мелодии (сейчас на пульте только «Тишина», остальные оставлены на будущее)
 const TR={off:{n:'Тишина'},ambient:{n:'Эмбиент',bpm:50,scale:[0,2,4,7,9],root:220,type:'sine',dens:.4,glow:[120,180,255]},
   piano:{n:'Лоу-фай',bpm:72,scale:[0,3,5,7,10],root:196,type:'triangle',dens:.6,glow:[255,190,120]},
   synth:{n:'Синтвейв',bpm:100,scale:[0,2,3,7,8],root:110,type:'sawtooth',dens:.8,glow:[255,80,200]}};
+// E — посчитанное освещение для текущего кадра: цвета неба, яркость, туман, ночь и т.д. Заполняет env()
 let E={};
 // Москва, середина месяца: восход, закат (МСК) и насколько глубоко темнеет ночью (5.5 — полная ночь, меньше — светлые сумерки)
+// MONTHS — по месяцам: подпись кнопки и D — насколько глубокая ночь (5.5 — полная, меньше — светлые летние ночи)
 const MONTHS=[null,{n:'Янв',sr:8.9,ss:16.5,D:5.5},{n:'Фев',sr:8.1,ss:17.5,D:5.5},{n:'Мар',sr:7,ss:18.4,D:5.5},{n:'Апр',sr:5.75,ss:19.5,D:4.6},{n:'Май',sr:4.65,ss:20.5,D:2.9},{n:'Июн',sr:3.75,ss:21.25,D:1.7},
   {n:'Июл',sr:4.1,ss:21.1,D:2.1},{n:'Авг',sr:5.1,ss:20.15,D:3.6},{n:'Сен',sr:6.25,ss:18.85,D:5.2},{n:'Окт',sr:7.35,ss:17.6,D:5.5},{n:'Ноя',sr:8.25,ss:16.4,D:5.5},{n:'Дек',sr:8.95,ss:16,D:5.5},];
+// LEAFY — есть ли листья (лето, осень, май); MAYL — цвета молодой майской листвы
 const LEAFY=()=>S.season==='summer'||S.season==='autumn'||S.month===5,MAYL=['#8fcf5a','#a2d96a','#7cc24c','#b5e27a','#94d060'];   // в мае уже молодые листья
+// MSEASON — какой сезон у месяца ('fav' = март: голые ветки, на пульте это часть весны); SMONTH — какой месяц открыть при выборе сезона
 const MSEASON=m=>m===3?'fav':m<=2||m===12?'winter':m<=5?'spring':m<=8?'summer':'autumn',SMONTH={winter:1,fav:3,spring:4,summer:7,autumn:10};
-// точный восход и заход для Москвы (55.76° с.ш., 37.62° в.д., МСК): в текущем месяце — на сегодня, в других — на 15-е число
 // точное положение солнца над Москвой (55.76° с.ш., 37.62° в.д., МСК): в текущем месяце — на сегодня, в других — на 15-е число
+// sunDay/sunTimes/sunElev — астрономия: восход, закат и высота солнца над Москвой в любой момент
 function sunDay(m){const now=new Date(),d=m===now.getMonth()+1?now:new Date(now.getFullYear(),m-1,15),N=Math.round((d-new Date(d.getFullYear(),0,0))/864e5),g=2*Math.PI/365*(N-1);
   const eq=229.18*(.000075+.001868*Math.cos(g)-.032077*Math.sin(g)-.014615*Math.cos(2*g)-.040849*Math.sin(2*g)),
     dec=.006918-.399912*Math.cos(g)+.070257*Math.sin(g)-.006758*Math.cos(2*g)+.000907*Math.sin(2*g)-.002697*Math.cos(3*g)+.00148*Math.sin(3*g);return{eq,dec}}
@@ -135,12 +174,15 @@ function sunTimes(m){const{eq,dec}=sunDay(m),ha=Math.acos(Math.cos(90.833*Math.P
   return{sr:(720-4*(LON+ha)-eq)/60+3,ss:(720-4*(LON-ha)-eq)/60+3}}
 function sunElev(m,t){const{eq,dec}=sunDay(m),ha=((t-3)*60+eq+4*LON-720)/4*Math.PI/180;
   return Math.asin(Math.sin(LAT)*Math.sin(dec)+Math.cos(LAT)*Math.cos(dec)*Math.cos(ha))*180/Math.PI}
+// canon — переводит настоящее время в «условное» для таблицы KEY: так темнеет ровно тогда, когда в Москве
 function canon(t){ // реальное время → «условное» время таблицы неба (восход 6.3, закат 18.5, ночь с 21.5 до 3.3)
   const M=sunTimes(S.month);if(t>=M.sr&&t<=M.ss)return 6.3+(t-M.sr)/(M.ss-M.sr)*12.2;
   // после заката темнеет по настоящей высоте солнца
   const e=sunElev(S.month,t),k=clamp((-.833-e)/11),   // к −12° уже ночь; в июне солнце уходит лишь до −11°, ночь короткая и не самая глубокая
     evening=((t-M.ss+24)%24)<((M.sr-t+24)%24);
   return evening?18.5+k*3:(30.3-k*3)%24}
+// env — главный расчёт освещения на текущий момент: цвет неба сверху и у горизонта, яркость, отблеск заката,
+//   зимнее городское зарево, пасмурно/морозно/тепло, туман. Результат кладётся в E
 function env(){
   const t=canon(S.time%24);let i=0;while(KEY[i+1][0]<t)i++;const a=KEY[i],b=KEY[i+1],k=(t-a[0])/(b[0]-a[0]||1);
   let top=mix(hx(a[1]),hx(b[1]),k),bot=mix(hx(a[2]),hx(b[2]),k),amb=a[3]+(b[3]-a[3])*k;
@@ -163,6 +205,7 @@ function env(){
      snow:S.snowfall||S.weather==='frost'||S.season==='winter',frost:S.weather==='frost',wind:wx.wind*MOOD[S.mood].wind*(S.windy?2.4:1),ink:'rgba(28,24,36,.8)'};E.line=`rgba(34,30,40,${.42*(1-E.n*.55)*(1-E.fog)})`;
   {const dayc=mix(mix([255,255,255],[255,198,165],E.g*.8),[150,154,164],clamp((E.gm-.35)*1.3)),ck=clamp((E.amb-.12)/.5);E.cb=mix([92,70,84],dayc,ck);E.cs=mix([58,46,62],dayc.map((v,j)=>v*(j==2?.86:.78)),ck)}
 }
+// col — цвет предмета с учётом света: ночью темнее, на закате теплее, вдали тонет в дымке (depth 0 — рядом, 1 — у горизонта)
 function col(base,depth=0,sun=0){
   let c=(typeof base==='string'?hx(base):base).map((v,j)=>v*E.L[j]);
   if(sun)c=mix(c,E.sunc,E.g*sun*(E.ev?1:.55));
@@ -170,27 +213,32 @@ function col(base,depth=0,sun=0){
 }
 const C=(b,d,s)=>css(col(b,d,s));
 
-/* ---------- примитивы ---------- */
+/* ---------- 3. ПРИМИТИВЫ: из чего рисуется город ---------- */
 function poly(c,p,fill,ink=true){c.beginPath();c.moveTo(p[0],p[1]);for(let i=2;i<p.length;i+=2)c.lineTo(p[i],p[i+1]);c.closePath();c.fillStyle=fill;c.fill();
   if(ink){c.strokeStyle=S.drawn?E.ink:E.line;c.lineWidth=S.drawn?1.4:.7;c.stroke()}}
 function rect(c,x,y,w,h,fill,ink=true){c.fillStyle=fill;c.fillRect(x,y,w,h);if(ink){c.strokeStyle=S.drawn?E.ink:E.line;c.lineWidth=S.drawn?1.3:.7;c.strokeRect(x,y,w,h)}}
 function circ(c,x,y,r,fill){c.beginPath();c.arc(x,y,r,0,7);c.fillStyle=fill;c.fill()}
+// wins — сетка окон на фасаде; ночью часть окон горит (сколько — зависит от времени, E.lit)
 function wins(c,x,y,w,h,nx,ny,r,depth,p=1){
   const ww=w/nx,wh=h/ny,dark=css(fogmix(mix(mix([52,62,80],E.top,.35).map(v=>v*(.3+.7*E.amb)),E.bot,depth*.7),depth));
   for(let j=0;j<ny;j++)for(let i=0;i<nx;i++){const q=r(),v=r();
     c.fillStyle=q<E.n*.55*p*E.lit?css(fogmix(mix([255,196,120],[255,240,205],v),depth)):dark;
     c.fillRect(x+i*ww+ww*.3,y+j*wh+wh*.26,Math.max(1,ww*.4),Math.max(1,wh*.48))}}
+// roofC — цвет крыши; зимой и при снеге крыши белые
 const roofC=(b,d)=>C(E.snow?mix(hx(b),[245,247,250],.85):b,d);
 
-/* ---------- город по панораме (координаты = пиксели панорамы 2270×1116) ---------- */
+/* ---------- 4. ГОРОД ---------- */
 function house(c,r,x,y,w,rh,wh,f,sun,d,hip=8){
   rect(c,x,y+rh,w,wh,C(f,d,sun));
   if(rh)poly(c,[x-3,y+rh,x+w+3,y+rh,x+w-hip,y,x+hip,y],roofC('#7f8a98',d));
   wins(c,x+2,y+rh+2,w-4,wh-3,Math.max(2,w/9|0),Math.max(1,wh/11|0),r,d,1.2);
   if(rh)for(let k=0;k<w/70;k++)rect(c,x+14+r()*(w-28),y-5,4,8,C('#8b7b6c',d),false);
 }
+// scaled — нарисовать кусок в другом масштабе (МГУ, Сити, цирк, Останкино сделаны отдельно и вставлены сюда)
 function scaled(c,x,y,k,fn){c.save();c.translate(x,y);c.scale(k,k);fn();c.restore()}
+// fogmix — насколько вещь тонет в тумане (в густом тумане видно только ближнее)
 const fogmix=(c,d)=>mix(c,E.bot,(E.fog>=1?1:E.fog*.6)*clamp((d-.052)*120+.6*(d>.03)));
+// winCol — цвет одного окна: горит или тёмное
 const winCol=(q,v,d,p)=>q<E.n*.55*p*E.lit?css(fogmix(mix([255,196,120],[255,240,205],v),d)):css(fogmix(mix(mix([52,62,80],E.top,.35).map(z=>z*(.3+.7*E.amb)),E.bot,d*.7),d));
 function bld(c,r,o){ // кирпичная пятиэтажка: фасадом (end=0) или торцом, с уходящей вправо/влево длинной стороной
   // чем ближе дом к горизонту, тем меньше видно крыши: смотрим сверху, с высокого этажа
@@ -223,6 +271,9 @@ function bld(c,r,o){ // кирпичная пятиэтажка: фасадом 
   wall(x,ew,es,3,false);poly(c,[x-1.5,y,x+ew+1.5,y,x+ew/2,y-rh],C(f,d,es));
   if(det){c.fillStyle=winCol(r(),r(),d,.2);c.fillRect(x+ew/2-fh*.15,y-rh*.55,fh*.3,fh*.3)}
 }
+// drawCity — рисует весь неподвижный город один раз в отдельный холст city (а не каждый кадр — так быстрее).
+//   Порядок: горизонт → трубы и Останкино → МГУ → дома перед МГУ → Сити → Лужники → ряды пятиэтажек и кроны
+//   → цирк → белый дом с мансардой → кирпичный дом с карнизом → улица справа → заросли внизу
 function drawCity(){
   const c=cc;c.setTransform(1,0,0,1,0,0);c.clearRect(0,0,CS,CS);c.setTransform(VS,0,0,VS,-VX*VS,-VY*VS);const r=rng(11),HZ=664;
   for(let x=370;x<1080;){const w=8+r()*26,h=3+r()*13;rect(c,x,HZ-h,w,h+4,C(mix([150,150,160],[200,185,165],r()),.72,.5),false);x+=w*.9}
@@ -276,6 +327,7 @@ function drawCity(){
   for(let i=0;i<2600;i++){const x=r2()*W,v=r2();if(x>1068)continue;const y=Math.min(1155,860+Math.pow(r2(),.7)*300);circ(c,x,y,5+r2()*11,css(col(E.snow?mix([44,46,50],[84,88,94],v*v):veg([46,40,33],[72,58,42],v*v),0),.8))}
   c.strokeStyle=css(col(E.snow?'#c9ccd0':'#6b5d4c',0),.55);c.lineWidth=.8;c.beginPath();for(let i=0;i<700;i++){const x=r2()*1090,y=850+r2()*300,l=30+r2()*90,a=(r2()-.5)*.5;c.moveTo(x,y);c.lineTo(x+Math.sin(a)*l,y-l);c.moveTo(x+Math.sin(a)*l*.5,y-l*.5);c.lineTo(x+Math.sin(a)*l*.5+(r2()-.5)*30,y-l*.5-14-r2()*20)}c.stroke();
 }
+// Останкинская башня (под карнизом кирпичного дома); ночью красные огни
 function ostankino(c,x,b){const d=.6,k='#b4b8bc';
   poly(c,[x-13,b,x+13,b,x+3.5,b-26,x-3.5,b-26],C(k,d));
   poly(c,[x-3.5,b-26,x+3.5,b-26,x+1.8,b-72,x-1.8,b-72],C(k,d));
@@ -284,6 +336,7 @@ function ostankino(c,x,b){const d=.6,k='#b4b8bc';
   if(E.n>.3&&E.fog<.9){circ(c,x,b-130,2.5,'rgba(255,70,60,.95)');circ(c,x,b-82,2,'rgba(255,70,60,.9)');rect(c,x-1.4,b-70,2.8,42,css([120,170,255],.6*E.n),false)}
 }
 /* МГУ и Сити срисованы с закатного снимка; координаты ниже — пиксели того снимка (ось МГУ x=122, горизонт y=360) */
+// МГУ: ярусы, башенки, шпиль со звездой; ночью подсвечен тёплым снизу вверх
 function msu(c){const d=.4,r=rng(5),n=E.n,ox=122,oy=360;
   const nc=u=>mix([232,150,80],[255,236,190],u);
   let D=d;const sh=(k,u)=>css(mix(col(k,D,.2),nc(u),n*(.3+.55*u)*(D<d?.5:1))),li=(k,u)=>css(mix(col(k,D,1),nc(u),n*(.4+.6*u)*(D<d?.5:1)));
@@ -315,6 +368,7 @@ function msu(c){const d=.4,r=rng(5),n=E.n,ox=122,oy=360;
   blk(88,296,18,.7,'#e0b98a');blk(104,289,36,.3);rect(c,110-ox,285-oy,24,4,C('#c5b697',d,.5),false);
   blk(138,296,68,.22);blk(152,283,48,.25);rect(c,165-ox,278-oy,22,5,C('#c5b697',d,.5),false);rect(c,172-ox,274-oy,8,4,C('#c5b697',d,.5),false);
 }
+// Москва-Сити: каждая башня своей формой и своим цветом огней, «Меркурий» оранжевый, справа две тёмные башни с красными верхушками
 function moscowCity(c){const d=.55,r=rng(9),n=E.n,ox=122,oy=360,b=-2,Y=[255,208,112],B=[105,160,255],G=[105,228,150],O=[255,138,48],Wt=[225,238,255];
   // lc — цвет огней башни ночью; у каждой свой, чаще жёлтый
   const P=(ph,k,lc=Y,edge=0,tint=0)=>{const pts=ph.map((v,i)=>i%2?v-oy:v-ox),base=mix(col(k,d,.2),E.top,.22*(1-n)),f=mix(mix(base,[56,64,94],n*.4),lc,n*tint);
@@ -341,6 +395,7 @@ function moscowCity(c){const d=.55,r=rng(9),n=E.n,ox=122,oy=360,b=-2,Y=[255,208,
     if(n>.2&&E.fog<.9){const g=c.createRadialGradient(px+3.75,325-oy,0,px+3.75,325-oy,7);g.addColorStop(0,`rgba(255,50,40,${.07*n})`);g.addColorStop(1,'rgba(255,50,40,0)');c.fillStyle=g;c.fillRect(px-4,317-oy,16,16);c.fillStyle='rgba(168,48,44,.7)';c.fillRect(px,326.6-oy,7.5,1.7);c.fillRect(px+1.2,324.3-oy,5.1,1.4)}
     else rect(c,px,327-oy,7.5,1.5,C('#a8483c',d),false)}
 }
+// Большой Московский цирк: стеклянный зал под складчатым куполом; бегущая строка на куполе рисуется отдельно в frame()
 function circus(c,x,b){const d=.5,R=92,ey=b-40,Hd=58,n=12;
   // Большой Московский цирк: круглый стеклянный зал под складчатым куполом из 24 складок с зубчатым карнизом
   rect(c,x-R-10,b-6,2*R+20,8,C('#b9b6ae',d),false);
@@ -355,6 +410,7 @@ function circus(c,x,b){const d=.5,R=92,ey=b-40,Hd=58,n=12;
   if(S.drawn){c.strokeStyle=E.ink;c.lineWidth=2;c.beginPath();for(let i=0;i<=2*n;i++){const q=P(Math.PI*i/(2*n),1.07,i%2?-3:13);i?c.lineTo(q[0],q[1]):c.moveTo(q[0],q[1])}c.stroke()}
   rect(c,x-R*.14,ey-Hd-7,R*.28,8,C('#c5cacf',d));rect(c,x-R*.08,ey-Hd-12,R*.16,5,C('#dfe2e4',d),false);
 }
+// кирпичный дом справа: кладка, окна, лоджии, тарелка, крыша с карнизом и антеннами
 function brick(c){const x0=1075,x1=1690,ry=597,r=rng(21),fc='#b59b6c',fr='#ebe7dc';
   rect(c,x0,ry,x1-x0,H-ry+95,C('#8a7655',0,.3));
   {const b0=col('#b0966a',0,.4),b1=col('#c7ab7a',0,.4),b2=col('#9c8058',0,.4);   // кирпичная кладка с перевязкой
@@ -383,6 +439,7 @@ function brick(c){const x0=1075,x1=1690,ry=597,r=rng(21),fc='#b59b6c',fr='#ebe7d
   rect(c,1546,540,14,26,C('#d9dbdc',0));rect(c,1552,512,1.6,30,C('#55595e',0),false);rect(c,1544,518,18,1.2,C('#55595e',0),false);
   rect(c,1488,580,20,14,C('#3f4756',0));rect(c,1486,577,24,4,C('#d8d3c6',0),false);
 }
+// за кирпичным домом: дальние башни, улица с фонарями и вывесками, соседнее крыло
 function rightSide(c,r){
   // дальние башни
   rect(c,1815,550,65,120,C('#9a5a4a',.22,.3));wins(c,1817,553,61,110,7,14,r,.22);rect(c,1828,544,30,6,C('#84493c',.22),false);
@@ -404,7 +461,8 @@ function rightSide(c,r){
   poly(c,[x0,ry,1866,612,1822,584,x0,562],roofC('#8f99a5',0));rect(c,x0,ry,x1-x0+8,8,C('#cfc9bb',0,.2));
 }
 
-/* ---------- деревья: стволы стоят там же, где на панораме ---------- */
+/* ---------- 5. ДЕРЕВЬЯ ---------- */
+// LM — прямоугольники, где листьев меньше (чтобы не закрывать МГУ, Сити и т.п.)
 const LM=[[288,445,382,585],[465,552,690,668],[748,645,832,702],[978,578,1012,664]];
 function mkTree(x,top,lean,seed,near){ // клён, как на панораме: прямой тонкий ствол, длинные редкие ветви уходят вверх под острым углом и загибаются к вертикали, на концах короткие парные веточки
   const r=rng(seed*13+1),segs=[[],[],[],[],[],[],[],[]],leaves=[],h=(1160-top)*7/6,top0=top,sc=near||(x>780?.8:x<420?1.12:1);   // правые деревья дальше от окна, левые ближе
@@ -425,6 +483,8 @@ function mkTree(x,top,lean,seed,near){ // клён, как на панораме
     if(i>=1&&i<6){const rem=h*(1-cum);for(const sd of[-1,1])if(r()<.72)limb(px,py,a+sd*(.36+r()*.28),Math.max(22,Math.min(h*.42,rem*(.34+r()*.3))),Math.min(6,i+2))}}   // боковые ветви заканчиваются заметно ниже макушки: выше всех только сам ствол-лидер
   twig(px,py,a-.35,10+r()*8,7);twig(px,py,a+.35,10+r()*8,7);
   return{segs,leaves,trunk,w:(2.6+h/170+r())*sc,tp:near?.74:.66,birch:false,kind:x>1000?1:0}}
+// TREES — список деревьев: [где стоит ствол по x, до какой высоты (y верхушки), наклон, зерно, ближе к окну]
+//   последнее — деревце перед Сити
 const TREES=[[247,650,.06,1],[365,660,-.05,2],[505,367,.02,3,1.3],[600,580,.08,4],[665,494,.02,5],[760,580,.05,6],[915,502,-.06,7],[985,620,.04,8],[1050,650,-.01,9],[572,600,.03,10]].map(a=>mkTree(...a));   // последнее — деревце перед Сити, на нём держатся бывшие «висящие» листья
 // одна голая ветка ближе остальных: отходит от ствола большого клёна и тянется вправо к середине левой створки, плавно изгибаясь вверх
 function mkNear(t){const r=rng(99),segs=[[],[],[],[],[],[],[],[]],leaves=[];let y=656,a=-.18,x=t.segs[0][0];
@@ -439,6 +499,7 @@ function mkNear(t){const r=rng(99),segs=[[],[],[],[],[],[],[],[]],leaves=[];let 
   fork(x,y,a-.3,22,7);fork(x,y,a+.25,18,7);
   return{segs,leaves,w:7.5,tp:.8,birch:false,kind:0}}
 TREES.push(mkNear(TREES[2]));
+// BAND — нижний густой слой листьев у подоконника (летом и осенью)
 const br=rng(41),BAND={kind:0,leaves:Array.from({length:800},()=>({x:185+Math.pow(br(),1.6)*1050,y:655+Math.pow(br(),.85)*500,s:.75+br()*.6,p:br()*6.28,k:br()*5|0,a:Math.PI+(br()-.5)*3.4}))};   // внизу слева листвы больше
 // фоновые ветки для нижних листьев: из-под подоконника поднимаются тонкие стебли, от них к каждому листу идёт веточка
 {const r=rng(43),segs=[[],[],[],[],[],[],[],[]],stems=[];
@@ -446,19 +507,27 @@ const br=rng(41),BAND={kind:0,leaves:Array.from({length:800},()=>({x:185+Math.po
  for(const l of BAND.leaves){let best=null,bd=1e9;for(const st of stems)for(const q of st){const dd=Math.hypot(q[0]-l.x,q[1]-l.y)+(q[1]<l.y?60:0);if(dd<bd){bd=dd;best=q}}
    if(best&&bd<190)segs[7].push(best[0],best[1],l.x+(r()-.5)*4,l.y+6)}
  BAND.segs=segs;BAND.w=4.2;BAND.tp=.8;BAND.bg=true}
+// EXTRA — запас под отдельные листья (сейчас пусто); ниже каждому листу заранее выбирается поворот и размер
 const EXTRA={kind:0,leaves:[]};
 for(const t of [BAND,EXTRA,...TREES])for(const l of t.leaves){l.ri=((Math.round(l.a/6.283*12)%12)+12)%12;l.z=l.s<.75?0:l.s<1.1?1:2}
+// цвета листьев: LEAF — старая палитра, LEAFS — летние зелёные
 const LEAF=['#6f8a3a','#9aa53c','#d6b23a','#d98a2e','#b5562a'],LEAFS=['#3f9e2c','#52b436','#66c440','#7bd04c','#48aa30'];
+// veg — цвет зарослей внизу по сезону
 const veg=(a,b,v)=>S.season==='summer'||S.month===5?mix([38,70,32],[92,132,54],v):S.season==='autumn'?mix([112,62,28],[204,130,44],v):mix(a,b,v);
+// SEASON — кнопки времён года; gustT — когда был последний порыв «Дуновение ветра»
 const SEASON={spring:{n:'Весна'},summer:{n:'Лето'},autumn:{n:'Осень'},winter:{n:'Зима'},fav:{n:'Весна',hide:1}};let gustT=-99;
+// MAPLE — контур кленового листа (старый вариант); LEAFA — осенние цвета; OVAL — лист правого дерева
 const MAPLE=[[0,-1],[0.1,-0.72],[0.24,-0.78],[0.2,-0.5],[0.48,-0.62],[0.44,-0.44],[0.8,-0.5],[0.66,-0.28],[0.98,-0.14],[0.7,0.02],[0.78,0.14],[0.5,0.16],[0.62,0.42],[0.34,0.34],[0.3,0.5],[0.05,0.4],[0.04,0.95],[-0.04,0.95],[-0.05,0.4],[-0.3,0.5],[-0.34,0.34],[-0.62,0.42],[-0.5,0.16],[-0.78,0.14],[-0.7,0.02],[-0.98,-0.14],[-0.66,-0.28],[-0.8,-0.5],[-0.44,-0.44],[-0.48,-0.62],[-0.2,-0.5],[-0.24,-0.78],[-0.1,-0.72]],LEAFA=['#e8873a','#f09a45','#dd7430','#f2ad52','#d9622e'],LSPR=[[],[]],OVAL=[[0,-.95],[.4,-.55],[.55,0],[.38,.55],[0,.95],[-.38,.55],[-.55,0],[-.4,-.55]];
 
+// ATL — «атлас»: все листья заранее нарисованы во всех поворотах, потом просто копируются — так тысячи листьев не тормозят
 const ATL=document.createElement('canvas'),CELL=Math.ceil(50*VS),NR=12,SZ=[.6,.95,1.25];ATL.width=CELL*NR*2;ATL.height=CELL*30;
 const MH=[[0,-1,0,0],[.06,-.8,.24,-.74],[.14,-.6,.2,-.42],[.3,-.56,.44,-.7],[.5,-.62,.8,-.66],[.66,-.5,.7,-.36],[.86,-.34,1,-.2],[.8,-.12,.62,.04],[.76,.06,.88,.22],[.66,.24,.56,.34],[.58,.44,.52,.52],[.3,.4,.06,.38]];
+// maplePath — контур листа клёна остролистного
 function maplePath(g){ // клён остролистный: широкий лист, пять лопастей с острыми концами и скруглёнными выемками, сердцевидное основание
   g.moveTo(0,-1);for(let i=1;i<MH.length;i++)g.quadraticCurveTo(MH[i][0],MH[i][1],MH[i][2],MH[i][3]);
   g.lineTo(.035,.98);g.lineTo(-.035,.98);g.lineTo(-.06,.38);
   for(let i=MH.length-1;i>=1;i--){const q=i>1?MH[i-1]:[0,0,0,-1];g.quadraticCurveTo(-MH[i][0],MH[i][1],-q[2],q[3])}}
+// buildLeaves — перерисовать атлас листьев (при смене сезона или света)
 function buildLeaves(){ // атлас листьев: вид × цвет × размер × поворот × «ребром к ветру»; рисуются без поворота и масштаба, поэтому быстро
   if(!LEAFY())return;const may=S.month===5,pal=may?MAYL:S.season==='summer'?LEAFS:LEAFA,g=ATL.getContext('2d');g.setTransform(1,0,0,1,0,0);g.clearRect(0,0,ATL.width,ATL.height);
   for(let kind=0;kind<2;kind++)for(let k=0;k<5;k++){const base=col(kind?mix(hx(pal[k]),S.season==='summer'?[150,170,70]:[230,196,70],.4):pal[k],0,.35),f=css(base),ol=S.drawn?E.ink:css(base.map(v=>v*.78),.4),vn=css(base.map(v=>v*.72),.8);
@@ -466,9 +535,12 @@ function buildLeaves(){ // атлас листьев: вид × цвет × ра
       g.setTransform(1,0,0,1,0,0);g.translate((ri*2+q+.5)*CELL,(((kind*5+k)*3+z)+.5)*CELL);g.rotate(ri*2*Math.PI/NR);g.scale(rad*(q?.32:1),rad);g.beginPath();
       if(kind)OVAL.forEach((m,i)=>i?g.lineTo(m[0],m[1]):g.moveTo(m[0],m[1]));else maplePath(g);g.closePath();g.fillStyle=f;g.fill();if(S.drawn||S.season!=='autumn'){g.strokeStyle=ol;g.lineWidth=S.drawn?.1:.04;g.stroke()}
       g.beginPath();g.moveTo(0,.9);g.lineTo(0,-.8);if(!kind){for(const[vx,vy]of[[.74,-.6],[-.74,-.6],[.92,-.2],[-.92,-.2],[.8,.2],[-.8,.2]]){g.moveTo(0,.38);g.lineTo(vx,vy)}}g.strokeStyle=vn;g.lineWidth=.05;g.stroke()}}}
+// gust — сила порыва ветра сейчас (0…1); при «+ Ветер» порыв не стихает
 const gust=()=>{const dt=T-gustT,g=dt<0?0:dt<.5?dt/.5:Math.exp(-(dt-.5)/1.7);return S.windy?Math.max(g,.78+.22*Math.sin(T*1.1)*Math.sin(T*.43)):g};   // «Ветер» — постоянный сильный порыв
 let T=0;
+// sw — насколько качнуть точку дерева: чем выше, тем сильнее; плюс постоянное лёгкое покачивание
 const sw=(x,y)=>{const k=Math.max(0,(H-y)/800);return Math.pow(k,1.4)*gust()*(S.windy?120:64)*(.75+.25*Math.sin(T*3.2+x*.012))+Math.sin(T*.9+x*.006)*E.wind*Math.pow(k,1.6)*8+Math.sin(T*2.3+x*.02+y*.01)*E.wind*1.3*k};
+// drawTrees — каждый кадр: ветки (весной почки), потом листья; каждый лист качается сам по себе
 function drawTrees(){
   const leafy=LEAFY(),g=gust(),w=Math.min(2.2,E.wind);
   const branches=(d0,d1,k)=>{ctx.lineCap='round';for(const t of leafy?[BAND,...TREES]:TREES){ctx.strokeStyle=C(t.birch?'#cfcabd':E.snow?'#4b4640':leafy?'#2c2420':'#3a2f28',0);for(let d=d0;d<d1;d++){const s=t.segs[d];ctx.lineWidth=Math.max(.9,t.w*k*Math.pow(t.tp||.66,d));ctx.beginPath();
@@ -491,19 +563,27 @@ function drawTrees(){
   leaves(2);
 }
 
-/* ---------- небо, провода, осадки ---------- */
+/* ---------- 6. КАДР: небо, облака, провода, дым, осадки ---------- */
+// STARS — звёзды; медленно поворачиваются вокруг Полярной (окно смотрит на север)
 const sr=rng(3),STARS=Array.from({length:800},()=>[150+Math.sqrt(sr())*2500,sr()*6.283,.7+sr()*1.6,sr()*6.28]);
+// CLOUDS — облака: у горизонта мелкие и плоские, выше крупнее
 const cr=rng(8),CLOUDS=Array.from({length:22},(_,i)=>{const y=642-Math.pow(cr(),1.5)*430,sc=.32+(660-y)/460,w=300*sc*(.7+cr()*.8),h=w/(2.3+(1.3-sc)*2.2+cr()*.6),b=[];
   for(let j=0;j<7;j++)b.push([.14+.72*j/6+(cr()-.5)*.05,.8+(cr()-.5)*.05,.15+cr()*.04]);
   for(let j=0;j<16;j++){const t=cr(),e=Math.pow(Math.sin(Math.PI*t),.7);b.push([.13+.74*t,.76-e*cr()*.44,.13+e*.17*cr()+.03])}
   return{x:cr()*1700,y,w,h,v:(2+cr()*4)*sc,o:((i*7)%22)/22,b}}).sort((a,b)=>b.y-a.y);
+// buildClouds — заранее нарисовать каждое облако нужного цвета (днём белые, ночью буро-фиолетовые)
 function buildClouds(){for(const c of CLOUDS){const w=Math.ceil(c.w*VS),h=Math.ceil(c.h*VS),cv=c.cv||(c.cv=document.createElement('canvas'));cv.width=w;cv.height=h;const g=cv.getContext('2d');
   for(const p of c.b){const x=p[0]*w,y=p[1]*h,r=p[2]*h,rg=g.createRadialGradient(x,y,r*.1,x,y,r);rg.addColorStop(0,css(E.cb,1));rg.addColorStop(.55,css(E.cb,.9));rg.addColorStop(1,css(E.cb,0));
     g.fillStyle=rg;g.save();g.translate(x,y);g.scale(1.6,1);g.translate(-x,-y);g.fillRect(x-r,y-r,2*r,2*r);g.restore()}
   g.globalCompositeOperation='source-atop';const lg=g.createLinearGradient(0,h*.3,0,h);lg.addColorStop(0,css(E.cs,0));lg.addColorStop(1,css(E.cs,.92));g.fillStyle=lg;g.fillRect(0,0,w,h)}}
+// DROPS — капли дождя и снежинки
 const pr=rng(4),DROPS=Array.from({length:700},()=>[pr()*W,pr()*H,.6+pr()*.8,pr()*6.28]);
+// WIRES — провода через окно: [откуда x,y, куда x,y]
 const WIRES=[[0,195,1200,473],[0,258,1200,480],[0,345,1200,500],[300,0,1450,510],[465,0,1690,566],[560,0,1740,572],[830,0,1935,572]];
+// бегущие строки: TM — на «Меркурии», TK — на куполе цирка; flash — вспышка молнии
 let beat=0,flash=0,TKW=0,TMW=0;const TM='СПБ БИРЖА   ';const TK='БОЛЬШОЙ МОСКОВСКИЙ ЦИРК  •  ЦИРК  •  ';
+// frame — рисует один кадр (≈30 раз в секунду): небо → звёзды → отблеск зари → облака → город
+//   → бегущие строки → дым из труб → туман → провода → деревья → дождь/снег/молния → свет (дым) 
 function frame(){
   ctx.setTransform(VS,0,0,VS,-VX*VS,-VY*VS);
   const g=ctx.createLinearGradient(0,0,0,680);g.addColorStop(0,css(E.top));g.addColorStop(1,css(E.bot));ctx.fillStyle=g;ctx.fillRect(0,0,W,H);
@@ -547,10 +627,12 @@ function frame(){
   if(S.drawn){ctx.strokeStyle='rgba(40,34,50,.09)';ctx.lineWidth=1;ctx.beginPath();for(let x=-H;x<W;x+=11){ctx.moveTo(x,H);ctx.lineTo(x+H*.5,H*.5+((x*7)%60))}ctx.stroke()}
   beat*=.94;
 }
+// loop — повторяет frame() не чаще 30 раз в секунду
 let last=0,start=performance.now();
 function loop(ts){requestAnimationFrame(loop);const gap=RM?1000:S.drawn?85:32;if(ts-last<gap)return;last=ts;T=RM?0:(ts-start)/1000;frame()}
 
-/* ---------- музыка ---------- */
+/* ---------- 7. МУЗЫКА ---------- */
+// AC — звук браузера; OWN — свой файл, выбранный кнопкой «Включить», играет по кругу
 let AC,master,timer,step=0;
 const OWN=new Audio();OWN.loop=true;
 function setMusic(){
@@ -567,8 +649,10 @@ function setMusic(){
     step++},dt*1000);
 }
 
-/* ---------- управление ---------- */
+/* ---------- 8. УПРАВЛЕНИЕ: кнопки пульта ---------- */
 const $=id=>document.getElementById(id),win=$('window');
+// refresh — вызывается после любого нажатия: пересчитать свет, перерисовать город, облака, листья,
+//   спрятать кнопки погоды, которых не бывает в этом сезоне, обновить надпись вверху
 function refresh(){
   const okW=v=>{const w=WX[v];return(!w.seasons||w.seasons.includes(S.season))&&!(w.not&&w.not.includes(S.season))};
   if(!okW(S.weather))S.weather=S.weather==='rain'?'sleet':S.weather==='sleet'||S.weather==='snow'?'rain':'clear';if(!okW(S.weather))S.weather='clear';
@@ -589,6 +673,7 @@ function refresh(){
   if(master&&(TR[S.music]||{}).bpm)master.gain.setTargetAtTime(S.open?.5:.3,AC.currentTime,.3);OWN.volume=S.open?1:.6;
   if(RM)frame();
 }
+// chips — создать ряд кнопок по списку (времена года, погода, свет, музыка)
 function chips(key,src){for(const v in src){const b=document.createElement('button');b.className='chip';b.dataset.v=v;b.id=key+'-'+v;b.textContent=src[v].n;
   b.onclick=()=>{S[key]=v;if(key==='music')setMusic();refresh()};$(key).append(b)}}
 chips('season',SEASON);
@@ -597,6 +682,7 @@ for(const b of $('season').children){const f=b.onclick;b.onclick=()=>{S.month=SM
 // своя музыка: файл с компьютера или телефона играет по кругу вместо встроенной
 {const b=document.createElement('button'),inp=document.createElement('input');b.className='chip';b.id='music-own';b.dataset.v='own';b.textContent='Включить';inp.type='file';inp.accept='audio/*';inp.id='ownFile';inp.hidden=true;
  b.onclick=()=>inp.click();inp.onchange=()=>{const f=inp.files[0];if(!f)return;OWN.src=URL.createObjectURL(f);S.music='own';setMusic();OWN.play().catch(()=>{});b.textContent='Играет: '+f.name.replace(/\.[^.]+$/,'').slice(0,18);refresh()};$('music').append(b,inp)}
+// ползунок времени, «Сейчас», быстрые кнопки Утро/День/Закат/Ночь, осадки, ветер, порыв, окно
 $('time').oninput=e=>{S.time=+e.target.value;S.live=false;refresh()};
 $('now').onclick=()=>{S.live=true;S.time=nowH();refresh()};
 for(const b of $('tod').children)b.onclick=()=>{S.time=+b.dataset.t;S.live=false;refresh()};
@@ -607,7 +693,9 @@ $('gustBtn').onclick=()=>{gustT=T;if(RM)frame()};
 const toggleOpen=()=>{S.open=!S.open;refresh()};$('hit').onclick=toggleOpen;$('openBtn').onclick=toggleOpen;
 setInterval(()=>{if(S.live){S.time=nowH();refresh()}},60000);
 // «По прогнозу»: текущая погода в Москве (юго-запад, район Воробьёвых гор / Вернадского) из open-meteo.com
+// FC_URL — адрес прогноза; на claude.ai не работает (там запрещены внешние запросы), на своём сайте и в Telegram работает
 const FC_URL='https://api.open-meteo.com/v1/forecast?latitude=55.67&longitude=37.50&current=weather_code,cloud_cover,temperature_2m,wind_speed_10m&timezone=Europe%2FMoscow';
+// fcWeather — перевести код погоды из прогноза в наши кнопки (с учётом сезона и температуры)
 function fcWeather(c){const w=c.weather_code,t=c.temperature_2m,sn=S.season;S.rain=false;S.snowfall=false;
   const sky=()=>sn==='autumn'?'overcast':'cloudy';
   if(w>=95){if(sn==='winter'){S.snowfall=true;return sky()}return 'storm'}
@@ -618,6 +706,7 @@ function fcWeather(c){const w=c.weather_code,t=c.temperature_2m,sn=S.season;S.ra
   if(w===2||c.cloud_cover>40)return 'cloudy';
   return sn==='winter'&&t<=-8?'frosty':'clear'}
 const FCN0={clear:'ясно',cloudy:'облачно',overcast:'пасмурно',rain:'дождь',sleet:'мокрый снег',snow:'снег',fog:'туман',storm:'гроза',frosty:'мороз, ясно'};
+// applyForecast — загрузить прогноз и включить нужную погоду; вызывается при открытии и по кнопке «По прогнозу»
 async function applyForecast(){const note=$('fcNote');note.textContent='Смотрю прогноз…';
   try{const r=await fetch(FC_URL);if(!r.ok)throw 0;const c=(await r.json()).current;
     const m=new Date().getMonth()+1;S.month=m;S.season=MSEASON(m);S.live=true;S.time=nowH();
@@ -627,6 +716,7 @@ async function applyForecast(){const note=$('fcNote');note.textContent='Смот
   catch(e){note.textContent='Прогноз здесь недоступен — включите погоду вручную';$('fcBtn').setAttribute('aria-pressed','false')}}
 $('fcBtn').onclick=applyForecast;
 for(const b of $('weather').children){const f=b.onclick;b.onclick=()=>{$('fcBtn').setAttribute('aria-pressed','false');$('fcNote').textContent='';f()}}
+// запуск: нарисовать, начать анимацию, подтянуть погоду
 refresh();requestAnimationFrame(loop);applyForecast();
 </script>
 <script>
