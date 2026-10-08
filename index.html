@@ -1,0 +1,638 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<title>Окно</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600&family=Prata&display=swap">
+<style>
+/* Layout: тёмная комната, одно большое окно на стене, под подоконником — пульт управления видом. */
+:root{
+  color-scheme:dark;
+  --wall:#1c1f27; --wall-2:#252934; --frame:#ebe8e0; --frame-shade:#bdb9ae;
+  --ink:#ece7dc; --ink-dim:#9a9caa; --line:#3a3f4d; --accent:#f2b872; --accent-ink:#2a1c08;
+  --display:'Prata',Georgia,serif; --body:'Golos Text',system-ui,sans-serif;
+}
+html,body{background:var(--wall)}
+body{color:var(--ink);font-family:var(--body);font-size:15px;padding-inline:16px;padding-block:28px 48px;
+  background:radial-gradient(120% 80% at 50% 0%,var(--wall-2),var(--wall) 70%)}
+.room{max-width:980px;margin-inline:auto;display:flex;flex-direction:column;gap:28px}
+header{display:flex;align-items:baseline;justify-content:space-between;gap:16px;flex-wrap:wrap}
+h1{font-family:var(--display);font-weight:400;font-size:clamp(24px,4vw,36px);margin:0;letter-spacing:.01em}
+#readout{color:var(--ink-dim);font-variant-numeric:tabular-nums}
+.win-wrap{display:flex;flex-direction:column;align-items:center}
+.window{position:relative;box-sizing:border-box;aspect-ratio:1/1;width:min(100%,82vh);min-width:min(100%,300px);margin-inline:auto;background:var(--frame);padding:3.4%;perspective:1700px;
+  box-shadow:0 0 0 1px var(--frame-shade),0 30px 60px rgba(0,0,0,.5);border-radius:3px}
+.pane{position:relative;width:100%;height:100%;overflow:hidden;background:#000;box-shadow:inset 0 0 0 2px var(--frame-shade)}
+canvas{display:block;width:100%;height:100%}
+.paper{position:absolute;inset:0;pointer-events:none;mix-blend-mode:multiply;opacity:0;transition:opacity .5s;
+  background:#f1e7d2 url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='240'%3E%3Cfilter id='n'%3E%3CfeTurbulence baseFrequency='.8' numOctaves='3'/%3E%3CfeColorMatrix values='0 0 0 0 .5 0 0 0 0 .45 0 0 0 0 .35 0 0 0 .5 0'/%3E%3C/filter%3E%3Crect width='240' height='240' filter='url(%23n)'/%3E%3C/svg%3E")}
+.drawn .paper{opacity:.55}
+.sashes{position:absolute;inset:3.4%;display:flex;transform-style:preserve-3d;pointer-events:none}
+.sash{flex:1;position:relative;border:clamp(7px,1.5vw,17px) solid var(--frame);
+  box-shadow:inset 0 0 0 2px var(--frame-shade),0 0 0 1px var(--frame-shade);
+  background:linear-gradient(112deg,rgba(255,255,255,.13),rgba(255,255,255,0) 28%,rgba(255,255,255,0) 62%,rgba(255,255,255,.07));
+  transition:transform 1.2s cubic-bezier(.3,.7,.2,1)}
+.sash.l{transform-origin:left center}.sash.r{transform-origin:right center}
+.open .sash.l{transform:rotateY(-76deg)}.open .sash.r{transform:rotateY(76deg)}
+.sash::after{content:"";position:absolute;top:50%;width:clamp(4px,.7vw,8px);height:11%;translate:0 -50%;background:var(--frame);
+  border-radius:4px;box-shadow:0 0 0 1px var(--frame-shade),1px 2px 3px rgba(0,0,0,.3)}
+.sash.l::after{right:calc(clamp(7px,1.5vw,17px)*-.75)}.sash.r::after{left:calc(clamp(7px,1.5vw,17px)*-.75)}
+.hit{position:absolute;inset:0;background:none;border:0;cursor:pointer;z-index:3}
+.hit:focus-visible{outline:3px solid var(--accent);outline-offset:4px}
+.sill{height:16px;width:min(104%,calc(82vh + 30px));align-self:center;background:linear-gradient(var(--frame),var(--frame-shade));border-radius:2px;box-shadow:0 10px 18px rgba(0,0,0,.45)}
+@media (prefers-reduced-motion:reduce){.sash{transition:none}}
+.panel{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:22px 32px;border-top:1px solid var(--line);padding-top:24px}
+.ctl{display:flex;flex-direction:column;gap:10px;min-width:0}
+.ctl>span,.ctl>label{font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-dim)}
+.row{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+button.chip{font:inherit;font-size:14px;color:var(--ink);background:transparent;border:1px solid var(--line);padding:7px 12px;border-radius:999px;cursor:pointer}
+button.chip:hover{border-color:var(--ink-dim)}
+button.chip[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);font-weight:600}
+button.chip:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+input[type=range]{flex:1;min-width:120px;accent-color:var(--accent)}
+.fcnote{color:var(--ink-dim);font-size:13px;min-height:1em}
+.note{color:var(--ink-dim);font-size:13px;margin:0;max-width:65ch}
+
+body.tg{padding-block:10px 32px;padding-inline:10px}
+body.tg header{display:none}
+body.tg .window{width:100%}
+</style>
+
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><filter id="sketch" x="0" y="0" width="100%" height="100%">
+<feTurbulence type="fractalNoise" baseFrequency=".035" numOctaves="2" seed="4" result="n"/><feDisplacementMap in="SourceGraphic" in2="n" scale="5"/></filter></svg>
+
+<div class="room">
+  <header><h1>Окно</h1><div id="readout"></div></header>
+
+  <div class="win-wrap">
+    <div class="window" id="window">
+      <div class="pane"><canvas id="view" width="1320" height="1320"></canvas><div class="paper"></div></div>
+      <div class="sashes"><div class="sash l"></div><div class="sash r"></div></div>
+      <button class="hit" id="hit" aria-label="Открыть или закрыть окно"></button>
+    </div>
+    <div class="sill"></div>
+  </div>
+
+  <div class="panel">
+    <div class="ctl"><span>Время года</span><div class="row" id="season"></div><div class="row" id="month"></div></div>
+    <div class="ctl"><label for="time">Время суток</label>
+      <div class="row"><input type="range" id="time" min="0" max="24" step="0.25"><button class="chip" id="now" aria-pressed="true">Сейчас</button></div>
+      <div class="row" id="tod"><button class="chip" data-t="7">Утро</button><button class="chip" data-t="13">День</button><button class="chip" data-t="18.5">Закат</button><button class="chip" data-t="23">Ночь</button></div></div>
+    <div class="ctl"><span>Погода</span><div class="row" id="weather"></div><div class="row"><button class="chip" id="rainBtn" aria-pressed="false">+ Дождь</button><button class="chip" id="snowBtn" aria-pressed="false">+ Снег</button><button class="chip" id="windyBtn" aria-pressed="false">+ Ветер</button></div>
+      </div>
+    <div class="ctl"><span>Свет</span><div class="row" id="mood"></div></div>
+    <div class="ctl"><span>Музыка</span><div class="row" id="music"></div></div>
+    <div class="ctl"><span>Окно</span><div class="row">
+      <button class="chip" id="openBtn" aria-pressed="false">Открыть окно</button><button class="chip" id="fcBtn" aria-pressed="false">По прогнозу</button><button class="chip" id="gustBtn">Дуновение ветра</button></div><div class="fcnote" id="fcNote"></div></div>
+  </div>
+</div>
+
+<script>
+const W=2270,H=1116,cv=document.getElementById('view'),ctx=cv.getContext('2d');
+// холст рисуется в том размере, в каком его видно на экране (не больше 1320), — меньше лишних пикселей, быстрее кадр
+const CS=Math.max(560,Math.min(1320,Math.round(Math.min(innerWidth,innerHeight*.82)*Math.min(2,devicePixelRatio||1)/40)*40)),VX=198,VY=130,VS=CS/1020;document.getElementById('view').width=document.getElementById('view').height=CS;const city=document.createElement('canvas');city.width=CS;city.height=CS;const cc=city.getContext('2d');
+const nowH=()=>{const d=new Date();return d.getHours()+d.getMinutes()/60};
+const PK=()=>S.rain&&S.snowfall?'sleet':S.rain?'rain':S.snowfall?'snow':null,PWEAK=()=>S.rain&&(S.season==='winter');
+const SG=x=>x==='fav'?'spring':x;   // март (голые ветки) показывается как часть весны
+const MSEASON0=m=>m===3?'fav':m<=2||m===12?'winter':m<=5?'spring':m<=8?'summer':'autumn';
+const S={time:nowH(),live:true,season:MSEASON0(new Date().getMonth()+1),month:new Date().getMonth()+1,weather:'clear',mood:'calm',music:'off',windy:false,rain:false,snowfall:false,drawn:false,open:false};
+const RM=matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+function rng(s){return()=>{s|=0;s=s+0x6D2B79F5|0;let t=Math.imul(s^s>>>15,1|s);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
+const hx=h=>[parseInt(h.slice(1,3),16),parseInt(h.slice(3,5),16),parseInt(h.slice(5,7),16)];
+const mix=(a,b,t)=>[a[0]+(b[0]-a[0])*t,a[1]+(b[1]-a[1])*t,a[2]+(b[2]-a[2])*t];
+const css=(c,a=1)=>`rgba(${Math.max(0,Math.min(255,c[0]))|0},${Math.max(0,Math.min(255,c[1]))|0},${Math.max(0,Math.min(255,c[2]))|0},${a})`;
+const clamp=(v,a=0,b=1)=>Math.max(a,Math.min(b,v));
+
+/* ---------- свет и небо ---------- */
+const KEY=[[0,'#070b1c','#151a33',.1],[4.5,'#0d1330','#2a2748',.14],[6,'#3c5a9c','#f0a884',.5],[8,'#5d9ae0','#d6e6f5',.9],[13,'#4a8fe4','#cfe6fa',1],[17,'#6aa2e8','#f1e2cc',.92],[18.7,'#5b7fc4','#f7a86e',.58],[20,'#272e5e','#8a5670',.28],[21.5,'#0b1028','#1e2344',.14],[24,'#070b1c','#151a33',.1]];
+const WX={clear:{n:'Ясно',cover:0,gm:0,wind:1},cloudy:{n:'Облачно',cover:.7,gm:0,wind:1.1},rain:{n:'Дождь',cover:1,gm:.86,wind:1.6,hide:1},sleet:{n:'Мокрый снег',cover:1,gm:.84,wind:1.4,hide:1},
+  snow:{n:'Снег',cover:.9,gm:.62,wind:.9,hide:1},fog:{n:'Туман',cover:0,gm:.9,wind:.5},storm:{n:'Гроза',cover:1,gm:.88,wind:2.6,not:['winter']},
+  overcast:{n:'Пасмурно',cover:0,gm:.3,wind:.9,seasons:['autumn']},frost:{n:'Иней',cover:0,gm:.15,wind:.35,seasons:['winter','fav']},frosty:{n:'Морозное небо',cover:0,gm:0,wind:.5,seasons:['winter']},crimson:{n:'Малиновый закат',cover:0,gm:0,wind:.8},warm:{n:'Тёплое небо',cover:0,gm:0,wind:.8,seasons:['summer']}};   // у некоторых погод свои времена года
+const MOOD={calm:{n:'Обычный',f:'',wind:1},sad:{n:'Тусклый',f:'saturate(.45) brightness(.86)',wind:1},
+  joy:{n:'Яркий',f:'saturate(1.35) brightness(1.1) contrast(1.05)',wind:1},anx:{n:'Дым',f:'saturate(.7) contrast(.9) sepia(.25)',wind:1,smoke:1},
+  dream:{n:'Мечтательное',f:'saturate(1.2) hue-rotate(20deg) brightness(1.04)',wind:.55,haze:1}};
+const TR={off:{n:'Тишина'},ambient:{n:'Эмбиент',bpm:50,scale:[0,2,4,7,9],root:220,type:'sine',dens:.4,glow:[120,180,255]},
+  piano:{n:'Лоу-фай',bpm:72,scale:[0,3,5,7,10],root:196,type:'triangle',dens:.6,glow:[255,190,120]},
+  synth:{n:'Синтвейв',bpm:100,scale:[0,2,3,7,8],root:110,type:'sawtooth',dens:.8,glow:[255,80,200]}};
+let E={};
+// Москва, середина месяца: восход, закат (МСК) и насколько глубоко темнеет ночью (5.5 — полная ночь, меньше — светлые сумерки)
+const MONTHS=[null,{n:'Янв',sr:8.9,ss:16.5,D:5.5},{n:'Фев',sr:8.1,ss:17.5,D:5.5},{n:'Мар',sr:7,ss:18.4,D:5.5},{n:'Апр',sr:5.75,ss:19.5,D:4.6},{n:'Май',sr:4.65,ss:20.5,D:2.9},{n:'Июн',sr:3.75,ss:21.25,D:1.7},
+  {n:'Июл',sr:4.1,ss:21.1,D:2.1},{n:'Авг',sr:5.1,ss:20.15,D:3.6},{n:'Сен',sr:6.25,ss:18.85,D:5.2},{n:'Окт',sr:7.35,ss:17.6,D:5.5},{n:'Ноя',sr:8.25,ss:16.4,D:5.5},{n:'Дек',sr:8.95,ss:16,D:5.5},];
+const LEAFY=()=>S.season==='summer'||S.season==='autumn'||S.month===5,MAYL=['#8fcf5a','#a2d96a','#7cc24c','#b5e27a','#94d060'];   // в мае уже молодые листья
+const MSEASON=m=>m===3?'fav':m<=2||m===12?'winter':m<=5?'spring':m<=8?'summer':'autumn',SMONTH={winter:1,fav:3,spring:4,summer:7,autumn:10};
+// точный восход и заход для Москвы (55.76° с.ш., 37.62° в.д., МСК): в текущем месяце — на сегодня, в других — на 15-е число
+// точное положение солнца над Москвой (55.76° с.ш., 37.62° в.д., МСК): в текущем месяце — на сегодня, в других — на 15-е число
+function sunDay(m){const now=new Date(),d=m===now.getMonth()+1?now:new Date(now.getFullYear(),m-1,15),N=Math.round((d-new Date(d.getFullYear(),0,0))/864e5),g=2*Math.PI/365*(N-1);
+  const eq=229.18*(.000075+.001868*Math.cos(g)-.032077*Math.sin(g)-.014615*Math.cos(2*g)-.040849*Math.sin(2*g)),
+    dec=.006918-.399912*Math.cos(g)+.070257*Math.sin(g)-.006758*Math.cos(2*g)+.000907*Math.sin(2*g)-.002697*Math.cos(3*g)+.00148*Math.sin(3*g);return{eq,dec}}
+const LAT=55.7558*Math.PI/180,LON=37.6173;
+function sunTimes(m){const{eq,dec}=sunDay(m),ha=Math.acos(Math.cos(90.833*Math.PI/180)/(Math.cos(LAT)*Math.cos(dec))-Math.tan(LAT)*Math.tan(dec))*180/Math.PI;
+  return{sr:(720-4*(LON+ha)-eq)/60+3,ss:(720-4*(LON-ha)-eq)/60+3}}
+function sunElev(m,t){const{eq,dec}=sunDay(m),ha=((t-3)*60+eq+4*LON-720)/4*Math.PI/180;
+  return Math.asin(Math.sin(LAT)*Math.sin(dec)+Math.cos(LAT)*Math.cos(dec)*Math.cos(ha))*180/Math.PI}
+function canon(t){ // реальное время → «условное» время таблицы неба (восход 6.3, закат 18.5, ночь с 21.5 до 3.3)
+  const M=sunTimes(S.month);if(t>=M.sr&&t<=M.ss)return 6.3+(t-M.sr)/(M.ss-M.sr)*12.2;
+  // после заката темнеет по настоящей высоте солнца
+  const e=sunElev(S.month,t),k=clamp((-.833-e)/11),   // к −12° уже ночь; в июне солнце уходит лишь до −11°, ночь короткая и не самая глубокая
+    evening=((t-M.ss+24)%24)<((M.sr-t+24)%24);
+  return evening?18.5+k*3:(30.3-k*3)%24}
+function env(){
+  const t=canon(S.time%24);let i=0;while(KEY[i+1][0]<t)i++;const a=KEY[i],b=KEY[i+1],k=(t-a[0])/(b[0]-a[0]||1);
+  let top=mix(hx(a[1]),hx(b[1]),k),bot=mix(hx(a[2]),hx(b[2]),k),amb=a[3]+(b[3]-a[3])*k;
+  const pk=PK(),wx=pk&&S.weather!=='overcast'&&S.weather!=='fog'?{...WX[S.weather],gm:Math.max(WX[S.weather].gm,WX[pk].gm*(PWEAK()?.8:1))}:WX[S.weather],gm=wx.gm,grey=mix([78,66,78],[150,158,170],clamp(amb*1.15));
+  top=mix(top,grey.map(v=>v*.78),gm);bot=mix(bot,grey.map(v=>v*1.08),gm);
+  const g=clamp(Math.max(1-Math.abs(t-6.3)/1.6,1-Math.abs(t-18.5)/1.8))*(1-gm),ev=t>12,mo=S.month,wint=S.weather==='crimson',summ=mo>=5&&mo<=8;
+  // зимой закат малиновый, летом рассвет светлый и прозрачный
+  const sunc=ev?(wint?[238,84,124]:[255,166,88]):(summ?[255,222,186]:[255,186,130]);
+  if(ev&&wint)bot=mix(bot,[226,92,128],g*.55*(1-gm));
+  if((mo<=2||mo>=11)&&S.weather!=='frosty'){const nn=clamp((.55-amb)/.38)*(S.weather==='clear'||S.weather==='crimson'?.5:1);/* ясной зимней ночью зарево слабее, чем в облачную */top=mix(top,[44,40,66],nn*.5);bot=mix(bot,[118,88,92],nn*.55);amb=Math.max(amb,.2*nn+amb*(1-nn))}   // зимняя ночь: снег и город подсвечивают небо, совсем темно не бывает
+  if(!ev&&summ){bot=mix(bot,[255,238,214],g*.5*(1-gm));top=mix(top,[150,186,232],g*.35*(1-gm));amb=Math.min(1,amb+g*.18)}
+  amb*=1-gm*.25;if(S.weather==='fog')top=mix(top,bot,.85);
+  if(S.weather==='overcast'){const k=clamp(amb*1.1),wh=mix([40,29,24],[226,228,231],k);top=mix(wh,[22,16,14],.35*(1-k)+.1*k);bot=mix(wh,mix([62,44,34],[255,255,255],k),.25)}   // ровное белое небо; ночью подсвечено городом в бурый
+  if(S.weather==='frosty'){const nn=clamp((.55-amb)/.38);top=mix(top,[10,18,52],nn*.7);bot=mix(bot,[34,52,104],nn*.6)}   // морозная ясная ночь: глубокая синяя, без городского зарева
+  if(S.weather==='frosty'){const d0=clamp((amb-.3)/.5);top=mix(top,[52,118,222],.5*d0);bot=mix(bot,[196,224,252],.45*d0);amb=Math.min(1,amb+.06*d0)}   // морозное небо: глубокое ясное, как весной, воздух прозрачный
+  if(S.weather==='warm'){const n0=clamp((.55-amb)/.38);top=mix(top,[44,46,92],.55*n0);bot=mix(bot,[150,112,120],.55*n0)}   // летняя ночь: небо светлее и теплее обычного
+  if(S.weather==='frost'){top=mix(top,[205,215,228].map(v=>v*(.2+.8*amb)),.35);bot=mix(bot,[235,236,240].map(v=>v*(.2+.8*amb)),.45)}
+  let L=mix([.17,.21,.36],[1,1,1],amb);const wm=mix([1,1,1],ev&&wint?[1.08,.82,.9]:!ev&&summ?[1.04,.99,.92]:[1.1,.9,.72],g*.7);L=L.map((v,j)=>v*wm[j]);
+  E={top,bot,amb,g,L,gm,sunc,ev,lit:(S.time>=16&&S.time<23.5?1.45:S.time>=6&&S.time<9?1.2:.55),n:clamp((.55-amb)/.38),fog:S.weather==='fog'?1:PK()?.35:S.weather==='storm'?.45:0,
+     snow:S.snowfall||S.weather==='frost'||S.season==='winter',frost:S.weather==='frost',wind:wx.wind*MOOD[S.mood].wind*(S.windy?2.4:1),ink:'rgba(28,24,36,.8)'};E.line=`rgba(34,30,40,${.42*(1-E.n*.55)*(1-E.fog)})`;
+  {const dayc=mix(mix([255,255,255],[255,198,165],E.g*.8),[150,154,164],clamp((E.gm-.35)*1.3)),ck=clamp((E.amb-.12)/.5);E.cb=mix([92,70,84],dayc,ck);E.cs=mix([58,46,62],dayc.map((v,j)=>v*(j==2?.86:.78)),ck)}
+}
+function col(base,depth=0,sun=0){
+  let c=(typeof base==='string'?hx(base):base).map((v,j)=>v*E.L[j]);
+  if(sun)c=mix(c,E.sunc,E.g*sun*(E.ev?1:.55));
+  return mix(c,E.bot,clamp(depth*(.5+.3*E.n)*(S.weather==='frosty'?.55:1)+E.fog*clamp((depth-.052)*120+.6*(depth>.03))));
+}
+const C=(b,d,s)=>css(col(b,d,s));
+
+/* ---------- примитивы ---------- */
+function poly(c,p,fill,ink=true){c.beginPath();c.moveTo(p[0],p[1]);for(let i=2;i<p.length;i+=2)c.lineTo(p[i],p[i+1]);c.closePath();c.fillStyle=fill;c.fill();
+  if(ink){c.strokeStyle=S.drawn?E.ink:E.line;c.lineWidth=S.drawn?1.4:.7;c.stroke()}}
+function rect(c,x,y,w,h,fill,ink=true){c.fillStyle=fill;c.fillRect(x,y,w,h);if(ink){c.strokeStyle=S.drawn?E.ink:E.line;c.lineWidth=S.drawn?1.3:.7;c.strokeRect(x,y,w,h)}}
+function circ(c,x,y,r,fill){c.beginPath();c.arc(x,y,r,0,7);c.fillStyle=fill;c.fill()}
+function wins(c,x,y,w,h,nx,ny,r,depth,p=1){
+  const ww=w/nx,wh=h/ny,dark=css(fogmix(mix(mix([52,62,80],E.top,.35).map(v=>v*(.3+.7*E.amb)),E.bot,depth*.7),depth));
+  for(let j=0;j<ny;j++)for(let i=0;i<nx;i++){const q=r(),v=r();
+    c.fillStyle=q<E.n*.55*p*E.lit?css(fogmix(mix([255,196,120],[255,240,205],v),depth)):dark;
+    c.fillRect(x+i*ww+ww*.3,y+j*wh+wh*.26,Math.max(1,ww*.4),Math.max(1,wh*.48))}}
+const roofC=(b,d)=>C(E.snow?mix(hx(b),[245,247,250],.85):b,d);
+
+/* ---------- город по панораме (координаты = пиксели панорамы 2270×1116) ---------- */
+function house(c,r,x,y,w,rh,wh,f,sun,d,hip=8){
+  rect(c,x,y+rh,w,wh,C(f,d,sun));
+  if(rh)poly(c,[x-3,y+rh,x+w+3,y+rh,x+w-hip,y,x+hip,y],roofC('#7f8a98',d));
+  wins(c,x+2,y+rh+2,w-4,wh-3,Math.max(2,w/9|0),Math.max(1,wh/11|0),r,d,1.2);
+  if(rh)for(let k=0;k<w/70;k++)rect(c,x+14+r()*(w-28),y-5,4,8,C('#8b7b6c',d),false);
+}
+function scaled(c,x,y,k,fn){c.save();c.translate(x,y);c.scale(k,k);fn();c.restore()}
+const fogmix=(c,d)=>mix(c,E.bot,(E.fog>=1?1:E.fog*.6)*clamp((d-.052)*120+.6*(d>.03)));
+const winCol=(q,v,d,p)=>q<E.n*.55*p*E.lit?css(fogmix(mix([255,196,120],[255,240,205],v),d)):css(fogmix(mix(mix([52,62,80],E.top,.35).map(z=>z*(.3+.7*E.amb)),E.bot,d*.7),d));
+function bld(c,r,o){ // кирпичная пятиэтажка: фасадом (end=0) или торцом, с уходящей вправо/влево длинной стороной
+  // чем ближе дом к горизонту, тем меньше видно крыши: смотрим сверху, с высокого этажа
+  const{x,y,w,h,f,d=.15,sun=.8,end=0,rk='#6c7889',sl=.1}=o,fh=h/5,rh=(o.rh??h*(.2+.35*clamp((y-665)/140)))*.72,rc=roofC(rk,d),p=.5,det=h>=30;
+  const cz=Math.max(1.2,h*.055),trim=sn=>C('#ece3d2',d,sn*.8),joint=sn=>css(col(mix(hx(f),[60,50,40],.5),d,sn),det?.34:.2);
+  const bricks=(x0,y0,ww,hh,sn)=>{if(h<18)return;const st=Math.max(1.6,fh/5);c.strokeStyle=joint(sn);c.lineWidth=.4;c.beginPath();
+    for(let yy=y0+st,k=0;yy<y0+hh;yy+=st,k++){c.moveTo(x0,yy);c.lineTo(x0+ww,yy);if(det)for(let xx=x0+(k%2?st:0);xx<x0+ww;xx+=st*2){c.moveTo(xx,yy-st);c.lineTo(xx,yy)}}c.stroke()};
+  const wall=(x0,ww,sn,cols,doors)=>{rect(c,x0,y,ww,h,C(f,d,sn));bricks(x0,y,ww,h,sn);
+    rect(c,x0,y+h*.93,ww,h*.07,C(mix(hx(f),[92,88,86],.55),d,sn*.5),false);
+    const cell=ww/cols,w2=cell*.4,h2=fh*.52;
+    for(let j=0;j<5;j++)for(let i=0;i<cols;i++){const q=r(),v=r(),wx=x0+i*cell+cell*.3,wy=y+j*fh+fh*.22;
+      if(det){c.fillStyle=trim(sn);c.fillRect(wx-.6,wy-.6,w2+1.2,h2+1.2)}
+      c.fillStyle=winCol(q,v,d,p);c.fillRect(wx,wy,Math.max(1,w2),Math.max(1,h2));
+      if(det){c.fillStyle=trim(sn);c.fillRect(wx+w2*.5-.25,wy,.5,h2);if(j>0&&i%4===1){c.fillStyle=C('#8f959c',d,sn*.4);c.fillRect(wx-cell*.12,wy+h2*.62,w2+cell*.24,fh*.3)}}}
+    if(doors&&h>=20){const n=ww>3.4*h?5:ww>2*h?3:1;for(let k=0;k<n;k++){const ex=x0+ww*(k+.5)/n;c.fillStyle=C('#3d3a3a',d);c.fillRect(ex-fh*.15,y+h-fh*.56,fh*.3,fh*.56);c.fillStyle=trim(sn);c.fillRect(ex-fh*.3,y+h-fh*.66,fh*.6,fh*.1)}}
+    rect(c,x0-2,y-.4,ww+4,cz,trim(sn),false);rect(c,x0,y+fh*1.02,ww,Math.max(.6,h*.022),trim(sn),false)};
+  const seams=(a,b,q,s)=>{if(!det)return;c.strokeStyle=css(col('#4c5868',d),.4);c.lineWidth=.5;c.beginPath();for(let t=.04;t<1;t+=7/Math.max(40,Math.abs(b[0]-a[0]))){c.moveTo(a[0]+(b[0]-a[0])*t,a[1]+(b[1]-a[1])*t);c.lineTo(s[0]+(q[0]-s[0])*t,s[1]+(q[1]-s[1])*t)}c.stroke()};
+  if(!end){wall(x,w,sun,Math.max(3,Math.round(w/(fh*1.05))),true);
+    poly(c,[x-2.5,y,x+w+2.5,y,x+w-rh*.8,y-rh,x+rh*.8,y-rh],rc);seams([x-2.5,y],[x+w+2.5,y],[x+w-rh*.8,y-rh],[x+rh*.8,y-rh]);
+    for(let k=1;k<5;k++)if(r()<.6)rect(c,x+w*k/5+r()*6,y-rh-3,3,5,C('#8b7b6c',d),false);return}
+  const ew=o.ew??h*.7,L=w,s=L*sl,X0=end>0?x+ew:x,X1=X0+end*L,es=o.es??sun,ss=o.ss??.15;
+  poly(c,[X0,y,X1,y-s,X1,y-s+h*.86,X0,y+h],C(f,d,ss));
+  if(h>=18){c.strokeStyle=joint(ss);c.lineWidth=.4;c.beginPath();for(let j=1;j<5*4;j++){const t=j/20;c.moveTo(X0,y+h*t);c.lineTo(X1,y-s+h*.86*t)}c.stroke()}
+  const n=Math.max(3,Math.round(L/(fh*1.05)));
+  for(let i=0;i<n;i++)for(let j=0;j<5;j++){const q=r(),v=r(),t=(i+.5)/n,k=1-.14*t,wx=X0+end*L*t-fh*.2,wy=y-s*t+fh*(j+.24)*k;
+    if(det){c.fillStyle=trim(ss);c.fillRect(wx-.5,wy-.5,fh*.4+1,fh*.5*k+1)}c.fillStyle=winCol(q,v,d,p);c.fillRect(wx,wy,fh*.4,fh*.5*k)}
+  c.strokeStyle=trim(ss);c.lineWidth=cz;c.beginPath();c.moveTo(X0,y+cz/2);c.lineTo(X1,y-s+cz/2);c.stroke();
+  const ra=[X0,y],rb=[X1,y-s],rq=[x+ew/2+end*L,y-rh-s],rs=[x+ew/2,y-rh];
+  poly(c,[...rs,...rq,...rb,...ra],rc);seams(ra,rb,rq,rs);
+  wall(x,ew,es,3,false);poly(c,[x-1.5,y,x+ew+1.5,y,x+ew/2,y-rh],C(f,d,es));
+  if(det){c.fillStyle=winCol(r(),r(),d,.2);c.fillRect(x+ew/2-fh*.15,y-rh*.55,fh*.3,fh*.3)}
+}
+function drawCity(){
+  const c=cc;c.setTransform(1,0,0,1,0,0);c.clearRect(0,0,CS,CS);c.setTransform(VS,0,0,VS,-VX*VS,-VY*VS);const r=rng(11),HZ=664;
+  for(let x=370;x<1080;){const w=8+r()*26,h=3+r()*13;rect(c,x,HZ-h,w,h+4,C(mix([150,150,160],[200,185,165],r()),.72,.5),false);x+=w*.9}
+  rect(c,0,HZ-1,W,H,C('#6d6a62',.35),false);
+  scaled(c,1042,661,.58,()=>ostankino(c,0,0));
+  // две дальние трубы левее Останкинской башни
+  [[930,40],[948,33]].forEach(([x,h])=>{poly(c,[x-2.2,662,x+2.2,662,x+1.3,662-h,x-1.3,662-h],C('#b9b2aa',.6));for(let i=0;i<3;i++)rect(c,x-1.5,662-h+2+i*7,3,3,C('#b5523f',.6),false);if(E.n>.3&&E.fog<.9)circ(c,x,662-h-1.5,1.2,'rgba(255,60,50,.95)')});
+  scaled(c,330,668,1.5,()=>msu(c));
+  if(E.fog>=1){const g=c.createLinearGradient(0,478,0,526);g.addColorStop(0,css(E.bot,0));g.addColorStop(1,css(E.bot,1));c.fillStyle=g;c.fillRect(280,478,100,90)}   // низ шпиля тает в тумане
+  scaled(c,222.5,668,1.5,()=>moscowCity(c));
+  c.beginPath();c.ellipse(902,652,54,7,0,Math.PI,0);c.fillStyle=C('#d9d3c4',.55,.6);c.fill();rect(c,846,651,112,10,C('#ead9b4',.55,1),false);wins(c,847,652,110,8,28,1,r,.55,.6);
+  // дома среднего плана расставлены и повёрнуты как на снимке
+  const crown=(L)=>L.forEach(([x0,y0,x1,y1,k])=>{for(let i=0;i<k;i++)circ(c,x0+r()*(x1-x0),y0+r()*(y1-y0),7+r()*10,C(E.snow?'#565a60':veg([66,58,46],[108,84,54],r()*.8),.1))});
+  // дома-заполнители позади: ряды плотно, с перекрытием, чтобы между домами не оставалось пустой земли
+  {const fr=rng(57),fc=['#c9b79a','#b9a58c','#cdb2a0','#b3ada0','#d2bfa8','#a9755a','#c4ae8a'];
+   [[680,15,.27],[694,18,.24],[708,22,.2],[728,27,.16],[752,32,.12],[778,38,.09]].forEach(([y,h,d])=>{
+     for(let x=150+fr()*20;x<1075;){const w=(2.6+fr()*1.6)*h;bld(c,fr,{x,y:y+fr()*6-3,w,h,f:fc[fr()*fc.length|0],d,sun:.2+fr()*.8});
+       if(fr()<.5)for(let k=0;k<3;k++)circ(c,x+w+fr()*12,y+h*(.5+fr()*.5),5+h*.25+fr()*6,C(veg([70,64,52],[118,96,62],fr()),d));
+       x+=w*(.72+fr()*.25)}})}
+  crown([[198,690,480,716,14],[555,692,745,712,12],[330,748,425,800,12],[560,772,820,798,16],[870,735,1000,770,12]]);
+  [{x:200,y:673,w:70,h:13,f:'#cbb48a',d:.3,sun:1},{x:276,y:674,w:74,h:13,f:'#c4ae8a',d:.3,sun:1},
+   {x:400,y:670,w:80,h:21,f:'#cdb68c',d:.28,sun:1},{x:486,y:669,w:80,h:21,f:'#c9a98a',d:.28,sun:1},{x:572,y:670,w:82,h:21,f:'#d2bc92',d:.28,sun:1},{x:662,y:669,w:72,h:17,f:'#d8c08a',d:.3,sun:.9},
+   {x:745,y:677,w:155,h:42,f:'#b97a5e',d:.26,sun:1,rh:12},{x:906,y:678,w:158,h:42,f:'#b98062',d:.26,sun:1,rh:12},
+   {k:1},
+   {x:475,y:688,w:76,h:34,f:'#d6bd8c',d:.22,sun:1,rh:11,rk:'#8a7468'},
+   {x:198,y:720,w:100,h:20,f:'#c8b08a',d:.18,sun:.9,rh:17},{x:303,y:720,w:97,h:20,f:'#b9a88f',d:.18,sun:.25,rh:17},
+   {x:405,y:723,w:88,h:23,f:'#a9755a',d:.17,sun:.6,rh:13,rk:'#8a7468'},{x:942,y:726,w:122,h:34,f:'#c2ad90',d:.14,sun:.25,rh:16},
+   {x:825,y:706,w:108,h:54,f:'#cdb287',d:.13,end:1,ew:45,es:1,ss:.08,rh:14,sl:.07},
+   {x:522,y:722,w:298,h:48,f:'#aaa189',d:.13,sun:.1,rh:22},
+   {k:2},
+   {x:1012,y:744,w:96,h:42,f:'#c9b79a',d:.1,end:-1,es:.12,ss:.9,rh:14,sl:.1},
+   {x:340,y:754,w:74,h:38,f:'#c7ad8f',d:.1,end:1,es:.95,ss:.15,rh:13,sl:.1},
+   {x:198,y:802,w:128,h:52,f:'#b3ada0',d:.06,sun:.3,rh:27},{x:838,y:792,w:150,h:60,f:'#d3bd8a',d:.06,sun:.35,rh:31},
+   {x:440,y:797,w:362,h:88,f:'#d9cdb0',d:.05,sun:.45,rh:38}
+  ].forEach(o=>{
+    if(o.k===1){scaled(c,790,700,.4,()=>circus(c,0,0));return}
+    if(o.k===2){ // белый дом: тёмно-коричневая мансарда, белые слуховые окна с коричневыми ставнями, эркеры
+      rect(c,0,754,325,40,C('#ebe8e2',.1,.3));rect(c,0,734,325,21,roofC('#4a3a32',.1));
+      for(let x=4,i=0;x<320;x+=17,i++){const q=r(),g=q<E.n*.3*E.lit?'rgba(255,214,150,1)':C('#4a5466',.1),bay=i%4===2;
+        poly(c,[x,756,x+12,756,x+12,741,x+6,734,x,741],C('#f5f3ee',.1,.3));
+        c.fillStyle=C('#6b4630',.1,.2);c.fillRect(x+1.3,743,2.2,10);c.fillRect(x+8.5,743,2.2,10);
+        c.fillStyle=g;c.fillRect(x+3.8,743,4.4,10);
+        if(bay){rect(c,x-1,757,14,37,C('#f6f4f0',.1,.35),false);c.fillStyle=g;c.fillRect(x+1,760,10,11);c.fillRect(x+1,776,10,12);c.fillStyle=C('#f6f4f0',.1,.3);c.fillRect(x+5.6,760,.8,28)}
+        else{c.fillStyle=C('#4a5466',.1);c.fillRect(x+3,761,6,9);c.fillRect(x+3,777,6,10)}}
+      rect(c,0,772.5,325,1.2,C('#d9d5cc',.1,.3),false);return}
+    bld(c,r,o)});
+  [520,640,730].forEach(x=>poly(c,[x,790,x+20,790,x+10,776],C('#e4dcc8',.05,.4),false));
+  crown([[815,775,1075,860,30],[330,805,445,880,22],[800,850,1075,900,30]]);
+  c.save();c.translate(0,-57);brick(c);c.restore();rightSide(c,r);
+  const r2=rng(77),vg=c.createLinearGradient(0,790,0,900);vg.addColorStop(0,css(col('#3a332b',0),0));vg.addColorStop(1,C('#2e2924',0));c.fillStyle=vg;c.fillRect(0,790,1075,390);
+  for(let i=0;i<2600;i++){const x=r2()*W,v=r2();if(x>1068)continue;const y=Math.min(1155,860+Math.pow(r2(),.7)*300);circ(c,x,y,5+r2()*11,css(col(E.snow?mix([44,46,50],[84,88,94],v*v):veg([46,40,33],[72,58,42],v*v),0),.8))}
+  c.strokeStyle=css(col(E.snow?'#c9ccd0':'#6b5d4c',0),.55);c.lineWidth=.8;c.beginPath();for(let i=0;i<700;i++){const x=r2()*1090,y=850+r2()*300,l=30+r2()*90,a=(r2()-.5)*.5;c.moveTo(x,y);c.lineTo(x+Math.sin(a)*l,y-l);c.moveTo(x+Math.sin(a)*l*.5,y-l*.5);c.lineTo(x+Math.sin(a)*l*.5+(r2()-.5)*30,y-l*.5-14-r2()*20)}c.stroke();
+}
+function ostankino(c,x,b){const d=.6,k='#b4b8bc';
+  poly(c,[x-13,b,x+13,b,x+3.5,b-26,x-3.5,b-26],C(k,d));
+  poly(c,[x-3.5,b-26,x+3.5,b-26,x+1.8,b-72,x-1.8,b-72],C(k,d));
+  rect(c,x-6,b-80,12,8,C('#8d949c',d));rect(c,x-4,b-86,8,6,C(k,d));rect(c,x-2.5,b-94,5,8,C('#8d949c',d));
+  for(let i=0;i<5;i++)rect(c,x-1,b-94-(i+1)*7,2,7,C(i%2?'#d8d8d8':'#c2573f',d),false);
+  if(E.n>.3&&E.fog<.9){circ(c,x,b-130,2.5,'rgba(255,70,60,.95)');circ(c,x,b-82,2,'rgba(255,70,60,.9)');rect(c,x-1.4,b-70,2.8,42,css([120,170,255],.6*E.n),false)}
+}
+/* МГУ и Сити срисованы с закатного снимка; координаты ниже — пиксели того снимка (ось МГУ x=122, горизонт y=360) */
+function msu(c){const d=.4,r=rng(5),n=E.n,ox=122,oy=360;
+  const nc=u=>mix([232,150,80],[255,236,190],u);
+  let D=d;const sh=(k,u)=>css(mix(col(k,D,.2),nc(u),n*(.3+.55*u)*(D<d?.5:1))),li=(k,u)=>css(mix(col(k,D,1),nc(u),n*(.4+.6*u)*(D<d?.5:1)));
+  const face=(x,y,w,h,u,k=.36,base='#c9b594')=>{rect(c,x-ox,y-oy,w,h,sh(mix(hx(base),[104,98,100],.55),u));rect(c,x-ox,y-oy,w*k,h,li(base,u),false)};
+  const pin=(x,y,w,h,u)=>poly(c,[x-ox,y-oy,x+w-ox,y-oy,x+w/2-ox,y-h-oy],li('#cdb98c',u),false);
+  c.save();c.scale(1.32,1.1);   // ярусы шире и чуть выше, шпиль остаётся тонким
+  face(100,300,43,66,.3);wins(c,100-ox+1,300-oy+3,41,60,8,10,r,d,.3);
+  face(96,292,7,12,.4);pin(96,292,7,11,.4);face(139,294,6,10,.4);pin(139,294,6,10,.4);
+  face(109,268,28,34,.65);wins(c,109-ox+1,270-oy,26,30,6,6,r,d,.25);
+  face(108,263,4,5,.7,1);face(134,263,4,5,.7,.3);
+  rect(c,107-ox,267-oy,32,2,sh('#a8977a',.6),false);rect(c,107-ox,299-oy,32,2,sh('#a8977a',.5),false);
+  if(E.fog>=1)D=.04;   // шпиль проступает сквозь туман   // в тумане от высотки остаётся один шпиль
+  // вертикальные пилоны на верхнем блоке
+  if(E.fog<1)for(let i=0;i<6;i++)rect(c,111.6+i*4.6-ox,271-oy,.7,29,sh('#8f8168',.5),false);
+  // ярус под шпилем: вытянутый, с рёбрами и скруглёнными плечами
+  poly(c,[115.5-ox,272-oy,128.5-ox,272-oy,128.5-ox,254-oy,127-ox,250.5-oy,124.5-ox,248.5-oy,119.5-ox,248.5-oy,117-ox,250.5-oy,115.5-ox,254-oy],sh('#b3a184',.85));
+  poly(c,[115.5-ox,272-oy,120.5-ox,272-oy,120.5-ox,248.5-oy,119.5-ox,248.5-oy,117-ox,250.5-oy,115.5-ox,254-oy],li('#e2c592',.85),false);
+  for(let i=0;i<4;i++)rect(c,117.6+i*3-ox,254-oy,.8,16,sh('#857660',.5),false);
+  rect(c,114.3-ox,270.6-oy,15.4,1.8,li('#bba986',.9),false);
+  c.restore();c.save();c.translate(0,-11.2);
+  // ступенчатое основание шпиля, игла с «яблоком», звезда в венке
+  face(117.8,244.6,8.4,4.4,.95,.45);face(119.4,240.6,5.2,4.2,.97,.45);
+  poly(c,[120.9-ox,240.6-oy,123.1-ox,240.6-oy,122.35-ox,220-oy,121.65-ox,220-oy],sh('#bfae86',1));poly(c,[120.9-ox,240.6-oy,122-ox,240.6-oy,122-ox,220-oy,121.65-ox,220-oy],li('#ecd08e',1),false);
+  circ(c,0,233-oy,1.4,li('#e2c27a',1));
+  c.strokeStyle=li('#e3bd4c',1);c.lineWidth=1;c.beginPath();c.arc(0,217-oy,2.8,0,7);c.stroke();circ(c,0,217-oy,1.35,li('#f2d46a',1));
+  c.restore();
+  // дома, из-за которых выглядывает высотка
+  const blk=(x,y,w,k=.3,base='#cdbfa2')=>{const h=367-y;rect(c,x-ox,y-oy,w,h,C(mix(hx(base),[108,102,104],.5),d-.04,.15));rect(c,x-ox,y-oy,w*k,h,C(base,d-.04,1),false);
+    wins(c,x-ox+1,y-oy+2,w-2,h-4,Math.max(3,w/5|0),Math.max(2,h/6|0),r,d,.2)};
+  blk(0,290,36);blk(35,300,54,.15);rect(c,40-ox,296-oy,40,4,C('#b9ab8e',d,.4),false);
+  blk(88,296,18,.7,'#e0b98a');blk(104,289,36,.3);rect(c,110-ox,285-oy,24,4,C('#c5b697',d,.5),false);
+  blk(138,296,68,.22);blk(152,283,48,.25);rect(c,165-ox,278-oy,22,5,C('#c5b697',d,.5),false);rect(c,172-ox,274-oy,8,4,C('#c5b697',d,.5),false);
+}
+function moscowCity(c){const d=.55,r=rng(9),n=E.n,ox=122,oy=360,b=-2,Y=[255,208,112],B=[105,160,255],G=[105,228,150],O=[255,138,48],Wt=[225,238,255];
+  // lc — цвет огней башни ночью; у каждой свой, чаще жёлтый
+  const P=(ph,k,lc=Y,edge=0,tint=0)=>{const pts=ph.map((v,i)=>i%2?v-oy:v-ox),base=mix(col(k,d,.2),E.top,.22*(1-n)),f=mix(mix(base,[56,64,94],n*.4),lc,n*tint);
+    c.beginPath();c.moveTo(pts[0],pts[1]);for(let i=2;i<pts.length;i+=2)c.lineTo(pts[i],pts[i+1]);c.closePath();c.fillStyle=css(f);c.fill();c.strokeStyle=S.drawn?E.ink:E.line;c.lineWidth=S.drawn?.8:.5;c.stroke();
+    let x0=1e9,x1=-1e9,y0=1e9;for(let i=0;i<pts.length;i+=2){x0=Math.min(x0,pts[i]);x1=Math.max(x1,pts[i]);y0=Math.min(y0,pts[i+1])}
+    c.save();c.clip();c.fillStyle=css(mix(E.bot,[255,255,255],.5),(edge||.12)*(1-n)*(1-E.fog));c.fillRect(x0,y0,(x1-x0)*.3,b-y0);
+    if(n>.15&&E.fog<.9)for(let yy=y0+1;yy<b;yy+=1.8)for(let xx=x0+.5;xx<x1;xx+=1.9){const q=r(),v=r();if(q<.26*n){c.fillStyle=css(mix(lc,[255,255,255],v*.3),.92);c.fillRect(xx,yy,1,.9)}}
+    c.restore();if(n>.4&&E.fog<.9){if(edge){c.fillStyle=css(lc,.9);c.fillRect(x0,y0,x1-x0,.9)}circ(c,(x0+x1)/2,y0-1.2,.9,'rgba(255,60,50,.95)')}};
+  c.save();c.translate(287-ox,-2);c.scale(.8,1.22);c.translate(ox-287,2);   // башни сдвинуты плотнее друг к другу
+  P([287,358,300,358,300,309,287,309],'#55667e',Y);P([289,309,298,309,298,305.5,289,305.5],'#55667e',Y);rect(c,293.2-ox,311-oy,.5,47,css(E.bot,.25),false);   // «Нева»
+  P([304,358,318,358,318,327,316.2,319,313.4,313,309.5,309.5,304,309],'#9a6f52',O,0,.07);                 // «Меркурий» — единственная оранжевая
+  {const p=[320,358,328,358,328,329.2];for(let i=0;i<=6;i++){const a=i/6*Math.PI;p.push(324+4*Math.cos(a),329.2-7*Math.sin(a))}P(p,'#687a90',G,1)}   // «Империя»
+  P([339.5,358,343.6,358,343.6,314.8,341.5,310.8,339.5,314.8],'#62758f',Y);                                   // «Федерация-Запад»
+  {const x=330,h=26.4,p=[],q=[];for(let i=0;i<=8;i++){const t=i/8,o=Math.sin(t*3.5)*2;p.push(x+o,358-h*t);q.unshift(358-h*t);q.unshift(x+8.5-o*.5+Math.sin(t*3.5+1.2))}P(p.concat(q),'#8ea2ba',Wt,.4)}   // «Эволюция»
+  rect(c,346.6-ox,300-oy,.7,10,C('#aab2bc',d),false);
+  P([343.5,358,350.8,358,350.8,336,350,323,348.3,314,345.5,309,343.5,310],'#6c80a0',Y,.6);              // «Федерация-Восток»
+  P([355,358,367,358,367,309,355,315.5],'#5b6d86',B,1);                                                   // «ОКО»
+  for(const[x0,w,h,lc]of[[372,12,37.2,Y],[386,10,31.2,G]])for(let y=0;y<h;y+=5.2){const o=(y/5.2|0)%2?.8:-.8,hh=Math.min(5.3,h-y);P([x0+o,358-y,x0+o+w,358-y,x0+o+w,358-y-hh,x0+o,358-y-hh],(y/5.2|0)%2?'#687a92':'#5a6c85',lc)}   // «Город столиц»
+  P([400,358,410,358,410,329.2,400,329.2],'#5f7189',B);P([410.6,358,416,358,416,337.6,410.6,337.6],'#6a7b91',Y);P([416.5,358,421,358,421,344.8,416.5,344.8],'#75869b',Y);   // «Башня на Набережной»
+  c.restore();
+  // два одинаковых небоскрёба сразу справа: ночью почти чёрные, светятся только красные верхушки
+  if(E.fog<.9)for(const x of[408,419]){const px=x-ox,f=css(mix(col('#4c586c',d,.15),[9,10,16],n*.9));rect(c,px,327-oy,7.5,31,f);rect(c,px+1.2,324.5-oy,5.1,2.5,f,false);
+    if(n>.2&&E.fog<.9)for(let yy=331;yy<357;yy+=2.2)for(let xx=.9;xx<6.8;xx+=1.9){const q=r();if(q<.3){c.fillStyle=`rgba(235,240,250,${.16+.18*r()})`;c.fillRect(px+xx,yy-oy,.9,.9)}}
+    if(n>.2&&E.fog<.9){const g=c.createRadialGradient(px+3.75,325-oy,0,px+3.75,325-oy,7);g.addColorStop(0,`rgba(255,50,40,${.07*n})`);g.addColorStop(1,'rgba(255,50,40,0)');c.fillStyle=g;c.fillRect(px-4,317-oy,16,16);c.fillStyle='rgba(168,48,44,.7)';c.fillRect(px,326.6-oy,7.5,1.7);c.fillRect(px+1.2,324.3-oy,5.1,1.4)}
+    else rect(c,px,327-oy,7.5,1.5,C('#a8483c',d),false)}
+}
+function circus(c,x,b){const d=.5,R=92,ey=b-40,Hd=58,n=12;
+  // Большой Московский цирк: круглый стеклянный зал под складчатым куполом из 24 складок с зубчатым карнизом
+  rect(c,x-R-10,b-6,2*R+20,8,C('#b9b6ae',d),false);
+  rect(c,x-R+8,ey,2*R-16,36,css(mix(col('#5f7688',d),E.top,.3)));
+  for(let i=-R+12;i<R-8;i+=8)rect(c,x+i,ey,1.6,36,C('#e2e4e6',d),false);
+  rect(c,x-R+8,ey+17,2*R-16,2,C('#e2e4e6',d),false);
+  if(E.n>.2&&E.fog<.9){const g=c.createLinearGradient(0,ey,0,b);g.addColorStop(0,`rgba(255,200,120,${.3*E.n})`);g.addColorStop(1,`rgba(255,160,90,${.12*E.n})`);c.fillStyle=g;c.fillRect(x-R+8,ey,2*R-16,36)}
+  const P=(t,rad,hh)=>[x-Math.cos(t)*R*rad,ey-hh+Math.sin(t)*R*rad*.1];
+  for(let i=0;i<2*n;i++){const t0=Math.PI*i/(2*n),t1=Math.PI*(i+1)/(2*n),rg=i%2===0;
+    const e0=P(t0,1.07,rg?13:-3),e1=P(t1,1.07,rg?-3:13),m0=P(t0,.6,Hd*.64+(rg?3:-2)),m1=P(t1,.6,Hd*.64+(rg?-2:3)),k0=P(t0,.14,Hd),k1=P(t1,.14,Hd),f=roofC(rg?'#98a1a9':'#eef0f1',d);
+    poly(c,[...e0,...e1,...m1,...m0],f,false);poly(c,[...m0,...m1,...k1,...k0],f,false)}
+  if(S.drawn){c.strokeStyle=E.ink;c.lineWidth=2;c.beginPath();for(let i=0;i<=2*n;i++){const q=P(Math.PI*i/(2*n),1.07,i%2?-3:13);i?c.lineTo(q[0],q[1]):c.moveTo(q[0],q[1])}c.stroke()}
+  rect(c,x-R*.14,ey-Hd-7,R*.28,8,C('#c5cacf',d));rect(c,x-R*.08,ey-Hd-12,R*.16,5,C('#dfe2e4',d),false);
+}
+function brick(c){const x0=1075,x1=1690,ry=597,r=rng(21),fc='#b59b6c',fr='#ebe7dc';
+  rect(c,x0,ry,x1-x0,H-ry+95,C('#8a7655',0,.3));
+  {const b0=col('#b0966a',0,.4),b1=col('#c7ab7a',0,.4),b2=col('#9c8058',0,.4);   // кирпичная кладка с перевязкой
+   for(let y=ry,k=0;y<H+95;y+=5,k++)for(let x=x0-(k%2?5.5:0);x<1235;x+=11){const v=r(),xx=Math.max(x0,x+.4);c.fillStyle=css(v<.12?b2:mix(b0,b1,v));c.fillRect(xx,y+.5,x+10.6-xx,4.1)}}
+  const glass=(q,v)=>q<E.n*.3*E.lit?css(mix([255,190,110],[255,236,196],v)):css(mix([44,52,66],E.top,.3).map(z=>z*(.35+.65*E.amb)));
+  const cols=[1230,1300,1325,1390,1550,1620,1672];
+  for(let f=0;f<9;f++){const wy=630+f*62;
+    for(const wx of cols){const q=r(),v=r(),a=r(),nw=wx===1300||wx===1325?16:wx===1672?18:27;
+      rect(c,wx-2,wy-2,nw+4,38,C(fr,0),false);c.fillStyle=glass(q,v);c.fillRect(wx,wy,nw,34);
+      if(nw>20){rect(c,wx+nw*.55,wy,1.6,34,C(fr,0),false);rect(c,wx,wy+11,nw*.55,1.4,C(fr,0),false)}
+      if(a<.12&&nw>20)rect(c,wx-14,wy+36,16,11,C('#dcdfe2',0))}
+    // лоджии
+    const q=r(),v=r();rect(c,1432,wy-6,76,50,C(f%3?'#9b9689':'#b9b2a0',0,.3));c.fillStyle=glass(q,v);c.fillRect(1436,wy-2,68,26);
+    for(let k=1;k<4;k++)rect(c,1436+k*17,wy-2,1.5,26,C(fr,0),false);rect(c,1432,wy+26,76,18,C(f%2?'#8f8a7e':'#a59d8c',0,.2),false)}
+  circ(c,1467,662,10,C('#e6e8ea',0));circ(c,1467,662,2,C('#666',0));
+  rect(c,1359,ry+8,4,H,C('#8e8a80',0),false);
+  // крыша
+  poly(c,[1026,ry,1262,562,x1,562,x1,ry],roofC('#a9b4c0',0));rect(c,1120,ry-68,1.8,50,C('#4b4f55',0),false);rect(c,1108,ry-62,26,1.4,C('#4b4f55',0),false);rect(c,1112,ry-54,18,1.4,C('#4b4f55',0),false);
+  c.strokeStyle=css(col('#7d8792',0),.55);c.lineWidth=1;c.beginPath();for(let x=1280;x<x1;x+=20){c.moveTo(x,562);c.lineTo(x-6,ry)}for(let i=1;i<9;i++){c.moveTo(1026+i*26,ry-i*3.86);c.lineTo(1026+i*26-3,ry)}c.stroke();
+  rect(c,1022,ry-1,x1-1022,12,C('#d8d3c6',0,.3));poly(c,[1027,ry+11,1082,ry+11,1082,ry+28],C('#5f5547',0));rect(c,x0,ry+11,x1-x0,6,C('#6f5f48',0),false);
+  rect(c,1197,534,7,30,C('#f1f1ef',0),false);circ(c,1200.5,531,4.5,C('#fafafa',0));
+  rect(c,1213,568,19,17,C('#eceeef',0));circ(c,1222,576,5,C('#b9bec4',0));
+  rect(c,1270,552,92,30,C('#c9c1b2',0,.3));rect(c,1266,549,100,4,roofC('#8d98a4',0),false);rect(c,1302,566,22,9,C('#3d4654',0),false);
+  circ(c,1334,560,11,C('#e9ebed',0));circ(c,1334,560,2,C('#777',0));
+  [[1263,546],[1372,546],[1476,548],[1630,535]].forEach(([x,y])=>{rect(c,x,y,5,ry-y-18,C('#ececea',0),false);circ(c,x+2.5,y-2,3.5,C('#f6f6f4',0))});
+  rect(c,1546,540,14,26,C('#d9dbdc',0));rect(c,1552,512,1.6,30,C('#55595e',0),false);rect(c,1544,518,18,1.2,C('#55595e',0),false);
+  rect(c,1488,580,20,14,C('#3f4756',0));rect(c,1486,577,24,4,C('#d8d3c6',0),false);
+}
+function rightSide(c,r){
+  // дальние башни
+  rect(c,1815,550,65,120,C('#9a5a4a',.22,.3));wins(c,1817,553,61,110,7,14,r,.22);rect(c,1828,544,30,6,C('#84493c',.22),false);
+  rect(c,1925,525,100,150,C('#b7b3ac',.25,.3));wins(c,1927,530,96,140,12,18,r,.25);rect(c,1950,518,40,8,C('#a19d96',.25),false);
+  rect(c,2030,470,160,220,C('#a9a59e',.2,.3));rect(c,2110,478,80,8,C('#96928b',.2),false);wins(c,2033,480,154,205,17,24,r,.2);rect(c,2060,462,34,9,C('#96928b',.2),false);
+  rect(c,2190,600,80,90,C('#8f8a80',.2,.2));wins(c,2192,604,76,80,8,9,r,.2);
+  rect(c,1850,650,165,95,C('#8a7a62',.1,.2));poly(c,[1846,652,2019,652,2005,640,1860,640],roofC('#7b8490',.1));wins(c,1853,658,160,84,13,5,r,.1);
+  // улица
+  rect(c,1855,745,W-1855,H-745,C('#5f5e58',.03),false);
+  poly(c,[1855,850,W,905,W,985,1855,925],css(mix(col('#77736d',0),[214,140,60],E.n*.45)),false);
+  rect(c,2012,792,38,26,css(mix(col('#d8e6d0',0),[235,255,225],E.n)));rect(c,2198,798,72,42,css(mix(col('#4f9a62',0),[90,255,150],E.n)));
+  [[1865,800],[1925,768],[2015,775],[2178,785],[1880,948],[2085,860]].forEach(([x,y])=>{rect(c,x-1,y,2,70,C('#3c3f44',0),false);
+    if(E.n>.15){const g=c.createRadialGradient(x,y,0,x,y,46);g.addColorStop(0,`rgba(255,196,96,${E.n})`);g.addColorStop(1,'rgba(255,170,70,0)');c.fillStyle=g;c.fillRect(x-46,y-46,92,92)}circ(c,x,y,3.5,E.n>.15?'#ffe2a8':C('#d8d8d0',0))});
+  // соседнее крыло
+  const x0=1690,x1=1855,ry=602;rect(c,x0,ry,x1-x0,H-ry,C('#a48e68',0,.3));
+  c.strokeStyle=css(col('#7d6648',0),.3);c.lineWidth=.6;c.beginPath();for(let y=ry+5;y<H;y+=5){c.moveTo(x0,y);c.lineTo(x1,y)}c.stroke();
+  for(let f=0;f<9;f++){const wy=640+f*62;[[1696,52],[1772,30],[1820,24]].forEach(([wx,w])=>{const q=r(),v=r();rect(c,wx-2,wy-2,w+4,40,C('#e3dfd3',0),false);
+    c.fillStyle=q<E.n*.6*E.lit?css(mix([255,190,110],[255,236,196],v)):css(mix([44,52,66],E.top,.3).map(z=>z*(.35+.65*E.amb)));c.fillRect(wx,wy,w,36);rect(c,wx+w/2,wy,1.5,36,C('#e3dfd3',0),false)})}
+  poly(c,[x0,ry,1866,612,1822,584,x0,562],roofC('#8f99a5',0));rect(c,x0,ry,x1-x0+8,8,C('#cfc9bb',0,.2));
+}
+
+/* ---------- деревья: стволы стоят там же, где на панораме ---------- */
+const LM=[[288,445,382,585],[465,552,690,668],[748,645,832,702],[978,578,1012,664]];
+function mkTree(x,top,lean,seed,near){ // клён, как на панораме: прямой тонкий ствол, длинные редкие ветви уходят вверх под острым углом и загибаются к вертикали, на концах короткие парные веточки
+  const r=rng(seed*13+1),segs=[[],[],[],[],[],[],[],[]],leaves=[],h=(1160-top)*7/6,top0=top,sc=near||(x>780?.8:x<420?1.12:1);   // правые деревья дальше от окна, левые ближе
+  // листья сидят вдоль ветки через равные промежутки, поочерёдно слева и справа, а не пучком на конце
+  const seg=(x,y,a,l,d)=>{const x2=x+Math.cos(a)*l,y2=y+Math.sin(a)*l;segs[d].push(x,y,x2,y2);
+    if(d>=3){const n=Math.max(1,Math.round(l/34)),nx=-Math.sin(a),ny=Math.cos(a);for(let j=0;j<n;j++){const t=(j+.5+(r()-.5)*.3)/n,o=((j+d)%2?1:-1)*(9+r()*7);
+      const ly=y+(y2-y)*t+ny*o,tip=ly<1160-h*.8;   // на макушке листья мельче; осенью и весной ещё и реже
+      leaves.push({bx:x+(x2-x)*t+nx*o*.22,by:y+(y2-y)*t+ny*o*.22,x:x+(x2-x)*t+nx*o,y:ly,s:tip?.45+r()*.22:(.75+r()*.6)*sc,p:r()*6.28,k:r()*5|0,a:Math.PI+(r()-.5)*3.4,d,tip,tq:r()});
+      if(ly<1160-h*.45){const t2=Math.min(1,t+.5/n);leaves.push({bx:0,by:0,x:x+(x2-x)*t2-nx*o*.8,y:y+(y2-y)*t2-ny*o*.8,s:tip?.5+r()*.2:(.75+r()*.5)*sc,p:r()*6.28,k:r()*5|0,a:Math.PI+(r()-.5)*3.4,d,so:true})}}}   // летом на верхних ветках листьев больше
+    return[x2,y2]};
+  const twig=(x,y,a,l,d)=>{const[x2,y2]=seg(x,y,a,l,d);if(l>16){twig(x2,y2,a-.38,l*.42,7);twig(x2,y2,a+.38,l*.42,7)}};
+  const limb=(x,y,a,len,d)=>{const n=3+(len>120);for(let i=0;i<n;i++){const l=len/n*(1.15-.1*i),dd=Math.min(7,d+i);[x,y]=seg(x,y,a,l,dd);
+      if(i>0&&r()<.6)twig(x,y,a+(r()<.5?-1:1)*(.42+r()*.3),l*(.35+r()*.35),Math.min(7,dd+1));
+      a+=(-Math.PI/2-a)*.24+(r()-.5)*.12}
+    twig(x,y,a-.4,8+r()*8,7);twig(x,y,a+.4,8+r()*8,7)};
+  const wts=[.2,.16,.14,.12,.11,.1,.09,.08],trunk=[[x,1160]];let px=x,py=1160,a=-Math.PI/2+lean,cum=0;
+  for(let i=0;i<8;i++){[px,py]=seg(px,py,a,h*wts[i],i);trunk.push([px,py]);cum+=wts[i];a+=(r()-.5)*.07-lean*.12;
+    if(i>=1&&i<6){const rem=h*(1-cum);for(const sd of[-1,1])if(r()<.72)limb(px,py,a+sd*(.36+r()*.28),Math.max(22,Math.min(h*.42,rem*(.34+r()*.3))),Math.min(6,i+2))}}   // боковые ветви заканчиваются заметно ниже макушки: выше всех только сам ствол-лидер
+  twig(px,py,a-.35,10+r()*8,7);twig(px,py,a+.35,10+r()*8,7);
+  return{segs,leaves,trunk,w:(2.6+h/170+r())*sc,tp:near?.74:.66,birch:false,kind:x>1000?1:0}}
+const TREES=[[247,650,.06,1],[365,660,-.05,2],[505,367,.02,3,1.3],[600,580,.08,4],[665,494,.02,5],[760,580,.05,6],[915,502,-.06,7],[985,620,.04,8],[1050,650,-.01,9],[572,600,.03,10]].map(a=>mkTree(...a));   // последнее — деревце перед Сити, на нём держатся бывшие «висящие» листья
+// одна голая ветка ближе остальных: отходит от ствола большого клёна и тянется вправо к середине левой створки, плавно изгибаясь вверх
+function mkNear(t){const r=rng(99),segs=[[],[],[],[],[],[],[],[]],leaves=[];let y=656,a=-.18,x=t.segs[0][0];
+  for(let i=1;i<t.trunk.length;i++){const[p,q]=[t.trunk[i-1],t.trunk[i]];if((p[1]-y)*(q[1]-y)<=0){x=p[0]+(q[0]-p[0])*(y-p[1])/(q[1]-p[1]||1)}}   // точка именно на стволе
+  const put=(x,y,x2,y2,d,lv=true)=>{segs[d].push(x,y,x2,y2);if(!lv)return;const aa=Math.atan2(y2-y,x2-x),nx=-Math.sin(aa),ny=Math.cos(aa),n=Math.max(1,Math.round(Math.hypot(x2-x,y2-y)/34));
+    for(let j=0;j<n;j++){const tt=(j+.5)/n,o=(j%2?1:-1)*(12+r()*8);leaves.push({bx:x+(x2-x)*tt+nx*o*.2,by:y+(y2-y)*tt+ny*o*.2,x:x+(x2-x)*tt+nx*o,y:y+(y2-y)*tt+ny*o,s:1.12+r()*.13,p:r()*6.28,k:r()*5|0,a:Math.PI+(r()-.5)*3.4,d})}};
+  const fork=(x,y,a,l,d)=>{const x2=x+Math.cos(a)*l,y2=y+Math.sin(a)*l;put(x,y,x2,y2,d);if(l>14){for(const sd of[-1,1])fork(x2,y2,a+sd*(.34+r()*.2)-.08,l*(.5+r()*.15),Math.min(7,d+1))}};
+  const bend=[.36,-.5,.2,.44,-.4,.16,.4,-.3,.22];   // ветка изгибается коленцами, а не идёт прямо
+  for(let i=0;i<9;i++){const l=36-i*2.6,x2=x+Math.cos(a)*l,y2=y+Math.sin(a)*l;put(x,y,x2,y2,Math.min(7,3+(i>>1)),i>0);
+    if(i>0&&i%2===0)fork(x2,y2,a+(i%4?-1:1)*(.55+r()*.3),l*(.8+r()*.3),Math.min(7,4+(i>>1)));
+    x=x2;y=y2;a+=bend[i]-.04}
+  fork(x,y,a-.3,22,7);fork(x,y,a+.25,18,7);
+  return{segs,leaves,w:7.5,tp:.8,birch:false,kind:0}}
+TREES.push(mkNear(TREES[2]));
+const br=rng(41),BAND={kind:0,leaves:Array.from({length:800},()=>({x:185+Math.pow(br(),1.6)*1050,y:655+Math.pow(br(),.85)*500,s:.75+br()*.6,p:br()*6.28,k:br()*5|0,a:Math.PI+(br()-.5)*3.4}))};   // внизу слева листвы больше
+// фоновые ветки для нижних листьев: из-под подоконника поднимаются тонкие стебли, от них к каждому листу идёт веточка
+{const r=rng(43),segs=[[],[],[],[],[],[],[],[]],stems=[];
+ for(let x=190;x<1240;x+=46+r()*30){let px=x,py=1170,a=-Math.PI/2+(r()-.5)*.3;const pts=[[px,py]];for(let i=0;i<6;i++){const l=55+r()*25;const x2=px+Math.cos(a)*l,y2=py+Math.sin(a)*l;segs[Math.min(7,2+i)].push(px,py,x2,y2);px=x2;py=y2;pts.push([px,py]);a+=(r()-.5)*.35}stems.push(pts)}
+ for(const l of BAND.leaves){let best=null,bd=1e9;for(const st of stems)for(const q of st){const dd=Math.hypot(q[0]-l.x,q[1]-l.y)+(q[1]<l.y?60:0);if(dd<bd){bd=dd;best=q}}
+   if(best&&bd<190)segs[7].push(best[0],best[1],l.x+(r()-.5)*4,l.y+6)}
+ BAND.segs=segs;BAND.w=4.2;BAND.tp=.8;BAND.bg=true}
+const EXTRA={kind:0,leaves:[]};
+for(const t of [BAND,EXTRA,...TREES])for(const l of t.leaves){l.ri=((Math.round(l.a/6.283*12)%12)+12)%12;l.z=l.s<.75?0:l.s<1.1?1:2}
+const LEAF=['#6f8a3a','#9aa53c','#d6b23a','#d98a2e','#b5562a'],LEAFS=['#3f9e2c','#52b436','#66c440','#7bd04c','#48aa30'];
+const veg=(a,b,v)=>S.season==='summer'||S.month===5?mix([38,70,32],[92,132,54],v):S.season==='autumn'?mix([112,62,28],[204,130,44],v):mix(a,b,v);
+const SEASON={spring:{n:'Весна'},summer:{n:'Лето'},autumn:{n:'Осень'},winter:{n:'Зима'},fav:{n:'Весна',hide:1}};let gustT=-99;
+const MAPLE=[[0,-1],[0.1,-0.72],[0.24,-0.78],[0.2,-0.5],[0.48,-0.62],[0.44,-0.44],[0.8,-0.5],[0.66,-0.28],[0.98,-0.14],[0.7,0.02],[0.78,0.14],[0.5,0.16],[0.62,0.42],[0.34,0.34],[0.3,0.5],[0.05,0.4],[0.04,0.95],[-0.04,0.95],[-0.05,0.4],[-0.3,0.5],[-0.34,0.34],[-0.62,0.42],[-0.5,0.16],[-0.78,0.14],[-0.7,0.02],[-0.98,-0.14],[-0.66,-0.28],[-0.8,-0.5],[-0.44,-0.44],[-0.48,-0.62],[-0.2,-0.5],[-0.24,-0.78],[-0.1,-0.72]],LEAFA=['#e8873a','#f09a45','#dd7430','#f2ad52','#d9622e'],LSPR=[[],[]],OVAL=[[0,-.95],[.4,-.55],[.55,0],[.38,.55],[0,.95],[-.38,.55],[-.55,0],[-.4,-.55]];
+
+const ATL=document.createElement('canvas'),CELL=Math.ceil(50*VS),NR=12,SZ=[.6,.95,1.25];ATL.width=CELL*NR*2;ATL.height=CELL*30;
+const MH=[[0,-1,0,0],[.06,-.8,.24,-.74],[.14,-.6,.2,-.42],[.3,-.56,.44,-.7],[.5,-.62,.8,-.66],[.66,-.5,.7,-.36],[.86,-.34,1,-.2],[.8,-.12,.62,.04],[.76,.06,.88,.22],[.66,.24,.56,.34],[.58,.44,.52,.52],[.3,.4,.06,.38]];
+function maplePath(g){ // клён остролистный: широкий лист, пять лопастей с острыми концами и скруглёнными выемками, сердцевидное основание
+  g.moveTo(0,-1);for(let i=1;i<MH.length;i++)g.quadraticCurveTo(MH[i][0],MH[i][1],MH[i][2],MH[i][3]);
+  g.lineTo(.035,.98);g.lineTo(-.035,.98);g.lineTo(-.06,.38);
+  for(let i=MH.length-1;i>=1;i--){const q=i>1?MH[i-1]:[0,0,0,-1];g.quadraticCurveTo(-MH[i][0],MH[i][1],-q[2],q[3])}}
+function buildLeaves(){ // атлас листьев: вид × цвет × размер × поворот × «ребром к ветру»; рисуются без поворота и масштаба, поэтому быстро
+  if(!LEAFY())return;const may=S.month===5,pal=may?MAYL:S.season==='summer'?LEAFS:LEAFA,g=ATL.getContext('2d');g.setTransform(1,0,0,1,0,0);g.clearRect(0,0,ATL.width,ATL.height);
+  for(let kind=0;kind<2;kind++)for(let k=0;k<5;k++){const base=col(kind?mix(hx(pal[k]),S.season==='summer'?[150,170,70]:[230,196,70],.4):pal[k],0,.35),f=css(base),ol=S.drawn?E.ink:css(base.map(v=>v*.78),.4),vn=css(base.map(v=>v*.72),.8);
+    for(let z=0;z<3;z++)for(let ri=0;ri<NR;ri++)for(let q=0;q<2;q++){const rad=(kind?24:37)/2*SZ[z]*VS*(may?.72:1);
+      g.setTransform(1,0,0,1,0,0);g.translate((ri*2+q+.5)*CELL,(((kind*5+k)*3+z)+.5)*CELL);g.rotate(ri*2*Math.PI/NR);g.scale(rad*(q?.32:1),rad);g.beginPath();
+      if(kind)OVAL.forEach((m,i)=>i?g.lineTo(m[0],m[1]):g.moveTo(m[0],m[1]));else maplePath(g);g.closePath();g.fillStyle=f;g.fill();if(S.drawn||S.season!=='autumn'){g.strokeStyle=ol;g.lineWidth=S.drawn?.1:.04;g.stroke()}
+      g.beginPath();g.moveTo(0,.9);g.lineTo(0,-.8);if(!kind){for(const[vx,vy]of[[.74,-.6],[-.74,-.6],[.92,-.2],[-.92,-.2],[.8,.2],[-.8,.2]]){g.moveTo(0,.38);g.lineTo(vx,vy)}}g.strokeStyle=vn;g.lineWidth=.05;g.stroke()}}}
+const gust=()=>{const dt=T-gustT,g=dt<0?0:dt<.5?dt/.5:Math.exp(-(dt-.5)/1.7);return S.windy?Math.max(g,.78+.22*Math.sin(T*1.1)*Math.sin(T*.43)):g};   // «Ветер» — постоянный сильный порыв
+let T=0;
+const sw=(x,y)=>{const k=Math.max(0,(H-y)/800);return Math.pow(k,1.4)*gust()*(S.windy?120:64)*(.75+.25*Math.sin(T*3.2+x*.012))+Math.sin(T*.9+x*.006)*E.wind*Math.pow(k,1.6)*8+Math.sin(T*2.3+x*.02+y*.01)*E.wind*1.3*k};
+function drawTrees(){
+  const leafy=LEAFY(),g=gust(),w=Math.min(2.2,E.wind);
+  const branches=(d0,d1,k)=>{ctx.lineCap='round';for(const t of leafy?[BAND,...TREES]:TREES){ctx.strokeStyle=C(t.birch?'#cfcabd':E.snow?'#4b4640':leafy?'#2c2420':'#3a2f28',0);for(let d=d0;d<d1;d++){const s=t.segs[d];ctx.lineWidth=Math.max(.9,t.w*k*Math.pow(t.tp||.66,d));ctx.beginPath();
+    for(let i=0;i<s.length;i+=4){ctx.moveTo(s[i]+sw(s[i],s[i+1]),s[i+1]);ctx.lineTo(s[i+2]+sw(s[i+2],s[i+3]),s[i+3])}ctx.stroke();
+      if(E.frost){ctx.save();ctx.strokeStyle=css(mix([236,242,248],E.top,.15).map(v=>v*(.45+.55*E.amb)),.85);ctx.lineWidth=Math.max(.8,ctx.lineWidth*.6);ctx.translate(0,-.5);ctx.stroke();ctx.restore()}}}};   // иней: белая кромка сверху на каждой ветке
+  if(!leafy){branches(0,8,1);
+    if(S.season==='spring'){ // почки: мелкие светло-зелёные вдоль веток
+      ctx.fillStyle=C('#a8c765',0,.2);ctx.beginPath();for(const t of TREES)for(const l of t.leaves){if(l.so||l.tip&&l.tq<.5)continue;const x=l.bx+sw(l.bx,l.by),y=l.by;ctx.moveTo(x+2.8,y);ctx.ellipse(x,y,2.8,1.7,l.a+1.57,0,7)}ctx.fill();
+      ctx.fillStyle=C('#7b5a3c',0,.2);ctx.beginPath();for(const t of TREES)for(const l of t.leaves){if(l.so||l.tip&&l.tq<.5)continue;const x=l.bx+sw(l.bx,l.by)-Math.cos(l.a+1.57)*1.6,y=l.by-Math.sin(l.a+1.57)*1.6;ctx.moveTo(x+1.2,y);ctx.arc(x,y,1.2,0,7)}ctx.fill()}
+    return}
+  const aut=S.season==='autumn';
+  ctx.globalAlpha=.45;branches(0,1,1);ctx.globalAlpha=1;branches(1,8,1);
+  // каждый лист — один и тот же: плавно качается сам по себе, со своей фазой и скоростью, поворот постоянный
+  const leaves=(m)=>{ctx.setTransform(1,0,0,1,0,0);for(const t of [BAND,...TREES,EXTRA]){const L=t.leaves;for(let i=m;i<L.length;i+=3){const l=L[i];if(aut&&t!==BAND&&l.p>4.1)continue;if(S.month===5&&l.p>4.6)continue;if(S.season!=='summer'&&(l.so||l.tip&&l.tq<.5))continue;const kk=Math.max(0,(H-l.y)/800),
+      x=l.x+sw(l.x,l.y)+Math.sin(T*(1.1+l.s*.7)+l.p)*2.2*Math.min(w,1.3)+g*(4+l.s*3)*Math.pow(kk,1.2),y=l.y+Math.cos(T*(.9+l.s*.5)+l.p*1.7)*1.4*Math.min(w,1.3)-g*5*kk;
+      ctx.drawImage(ATL,((aut?(l.ri+6)%12:l.ri)*2+(g>.6&&Math.sin(T*1.3+l.p*5)>.3?1:0))*CELL,((t.kind*5+l.k)*3+l.z)*CELL,CELL,CELL,(x-VX)*VS-CELL/2,(y-VY)*VS-CELL/2,CELL,CELL)}}ctx.setTransform(VS,0,0,VS,-VX*VS,-VY*VS)};
+  leaves(0);leaves(1);
+  // главные ветви проступают сквозь листву, как на снимке, и часть листьев ложится поверх них
+  ctx.save();ctx.beginPath();ctx.rect(0,0,W,720);ctx.clip();ctx.globalAlpha=.9;branches(1,4,1.5);ctx.restore();
+  leaves(2);
+}
+
+/* ---------- небо, провода, осадки ---------- */
+const sr=rng(3),STARS=Array.from({length:800},()=>[150+Math.sqrt(sr())*2500,sr()*6.283,.7+sr()*1.6,sr()*6.28]);
+const cr=rng(8),CLOUDS=Array.from({length:22},(_,i)=>{const y=642-Math.pow(cr(),1.5)*430,sc=.32+(660-y)/460,w=300*sc*(.7+cr()*.8),h=w/(2.3+(1.3-sc)*2.2+cr()*.6),b=[];
+  for(let j=0;j<7;j++)b.push([.14+.72*j/6+(cr()-.5)*.05,.8+(cr()-.5)*.05,.15+cr()*.04]);
+  for(let j=0;j<16;j++){const t=cr(),e=Math.pow(Math.sin(Math.PI*t),.7);b.push([.13+.74*t,.76-e*cr()*.44,.13+e*.17*cr()+.03])}
+  return{x:cr()*1700,y,w,h,v:(2+cr()*4)*sc,o:((i*7)%22)/22,b}}).sort((a,b)=>b.y-a.y);
+function buildClouds(){for(const c of CLOUDS){const w=Math.ceil(c.w*VS),h=Math.ceil(c.h*VS),cv=c.cv||(c.cv=document.createElement('canvas'));cv.width=w;cv.height=h;const g=cv.getContext('2d');
+  for(const p of c.b){const x=p[0]*w,y=p[1]*h,r=p[2]*h,rg=g.createRadialGradient(x,y,r*.1,x,y,r);rg.addColorStop(0,css(E.cb,1));rg.addColorStop(.55,css(E.cb,.9));rg.addColorStop(1,css(E.cb,0));
+    g.fillStyle=rg;g.save();g.translate(x,y);g.scale(1.6,1);g.translate(-x,-y);g.fillRect(x-r,y-r,2*r,2*r);g.restore()}
+  g.globalCompositeOperation='source-atop';const lg=g.createLinearGradient(0,h*.3,0,h);lg.addColorStop(0,css(E.cs,0));lg.addColorStop(1,css(E.cs,.92));g.fillStyle=lg;g.fillRect(0,0,w,h)}}
+const pr=rng(4),DROPS=Array.from({length:700},()=>[pr()*W,pr()*H,.6+pr()*.8,pr()*6.28]);
+const WIRES=[[0,195,1200,473],[0,258,1200,480],[0,345,1200,500],[300,0,1450,510],[465,0,1690,566],[560,0,1740,572],[830,0,1935,572]];
+let beat=0,flash=0,TKW=0,TMW=0;const TM='СПБ БИРЖА   ';const TK='БОЛЬШОЙ МОСКОВСКИЙ ЦИРК  •  ЦИРК  •  ';
+function frame(){
+  ctx.setTransform(VS,0,0,VS,-VX*VS,-VY*VS);
+  const g=ctx.createLinearGradient(0,0,0,680);g.addColorStop(0,css(E.top));g.addColorStop(1,css(E.bot));ctx.fillStyle=g;ctx.fillRect(0,0,W,H);
+  const clear=1-E.gm,t=S.time;
+  if(E.n>.05&&clear>.2){const rot=-S.time*Math.PI/12;for(const q of STARS){const s=[820+q[0]*Math.cos(q[1]+rot),-620+q[0]*Math.sin(q[1]+rot),q[2],q[3]];if(s[1]<0||s[1]>650||s[0]<0||s[0]>W)continue;ctx.fillStyle=`rgba(255,250,235,${E.n*clear*(.5+.5*Math.sin(T*1.5+s[3]))*(S.mood==='dream'||S.weather==='frosty'?1:.8)})`;const z=S.weather==='frosty'?s[2]*1.35:s[2];ctx.fillRect(s[0],s[1],z,z)}}
+  // окно смотрит на север с небольшим поворотом к востоку: закат слева за кадром, рассвет справа, днём солнце за спиной
+  if(E.g>.02){const ev=E.ev,gx=ev?120:1260,rg=ctx.createRadialGradient(gx,640,0,gx,640,1500);rg.addColorStop(0,css(E.sunc,.7*E.g));rg.addColorStop(1,'rgba(255,170,110,0)');ctx.fillStyle=rg;ctx.fillRect(0,0,W,700)}
+  // облака
+  // облака: готовые мягкие спрайты, у горизонта мельче, площе и медленнее, выше — крупнее
+  const cover=S.weather==='overcast'||S.weather==='fog'?0:Math.max(WX[S.weather].cover,PK()?WX[PK()].cover:0),cb=E.cb;
+  ctx.save();ctx.beginPath();ctx.rect(0,0,W,662);ctx.clip();
+  for(const c of CLOUDS){if(c.o>=cover||!c.cv)continue;const x=((c.x+T*c.v*E.wind)%1700)-200;ctx.drawImage(c.cv,x,c.y-c.h,c.w,c.h)}
+  ctx.restore();
+  if(MOOD[S.mood].haze){const hg=ctx.createLinearGradient(0,300,0,720);hg.addColorStop(0,'rgba(255,170,220,0)');hg.addColorStop(1,'rgba(255,170,220,.28)');ctx.fillStyle=hg;ctx.fillRect(0,300,W,420)}
+  ctx.save();ctx.setTransform(1,0,0,1,0,0);ctx.drawImage(city,0,0);ctx.restore();
+  // бегущая строка на верхушке купола цирка — единственное, что у него видно чётко
+  {const fgc=E.fog>=.9;   // в тумане от цирка остаётся размытый тёплый проблеск бегущей строки
+  if(fgc){const rg=ctx.createRadialGradient(790,656,0,790,656,46);rg.addColorStop(0,'rgba(255,176,80,.62)');rg.addColorStop(1,'rgba(255,176,80,0)');ctx.fillStyle=rg;ctx.fillRect(740,610,100,92)}
+  ctx.save();ctx.globalAlpha=fgc?.7:1;if(fgc)ctx.filter=`blur(${1.6*VS}px)`;ctx.beginPath();ctx.rect(773,652.5,34,7.5);ctx.clip();ctx.fillStyle='#140b08';ctx.fillRect(773,652.5,34,7.5);ctx.font='bold 6.4px sans-serif';ctx.textBaseline='middle';
+  if(!TKW){TKW=ctx.measureText(TK).width;ctx.font='bold 8.5px sans-serif';TMW=ctx.measureText(TM).width;ctx.font='bold 6.4px sans-serif'}ctx.fillStyle='#ffb648';ctx.fillText(TK,807-((T*10)%(TKW+34)),656.6);ctx.restore();ctx.filter='none';
+  if(!fgc){
+  
+  // бегущая строка у верхушки «Меркурия»: чёрным по белой полосе
+  ctx.save();ctx.beginPath();ctx.rect(490.6,589,13.4,11);ctx.clip();ctx.fillStyle=css(mix(col('#f4f4f0',0),[250,250,246],E.n));ctx.fillRect(490,589,15,11);ctx.font='bold 8.5px sans-serif';ctx.textBaseline='middle';ctx.fillStyle='#0b0b0c';ctx.fillText(TM,504-((T*9)%(TMW+14)),594.8);ctx.restore()}}
+  // дым из труб идёт не всегда: то появляется, то сходит на нет
+  const sk=clamp(Math.sin(T*.045)*2+.95)*(E.fog<.9);if(sk>.01){ctx.save();ctx.beginPath();ctx.moveTo(0,0);ctx.lineTo(W,0);ctx.lineTo(W,504);ctx.lineTo(1262,504);ctx.lineTo(1026,538);ctx.lineTo(1022,538);ctx.lineTo(1022,551);ctx.lineTo(1027,551);ctx.lineTo(1075,568);ctx.lineTo(1075,700);ctx.lineTo(0,700);ctx.closePath();ctx.clip();const sc=mix(cb,[205,208,214].map(v=>v*(.4+.6*E.amb)),.6);
+    for(const[x0,y0]of[[930,621],[948,628]])for(let i=0;i<30;i++){const a=(i/30+T*.02)%1;circ(ctx,x0+(a*90+a*a*300)*Math.min(1.6,E.wind)+Math.sin(i*2.1+T*.4)*4*a,y0-a*150*(1-a*.25)-Math.sin(i*1.3)*7*a,3.5+a*36,css(sc,sk*Math.pow(1-a,1.3)*.85))}ctx.restore();scaled(ctx,1042,661,.58,()=>ostankino(ctx,0,0))}
+  if(E.fog){const fg=ctx.createLinearGradient(0,380,0,H);fg.addColorStop(0,css(E.bot,0));fg.addColorStop(.45,css(E.bot,.55*E.fog));fg.addColorStop(1,css(E.bot,.3*E.fog));ctx.fillStyle=fg;ctx.fillRect(0,380,W,H)}
+  // провода
+  ctx.strokeStyle=css(col('#20242c',0),.85);ctx.lineWidth=1.4;ctx.beginPath();
+  WIRES.forEach((w,i)=>{const mx=(w[0]+w[2])/2,my=(w[1]+w[3])/2+26+Math.sin(T*1.2+i)*2.5*E.wind;ctx.moveTo(w[0],w[1]);ctx.quadraticCurveTo(mx,my,w[2],w[3])});ctx.stroke();
+  drawTrees();
+  // осадки
+  const wx=S.weather,storm=wx==='storm',rn=S.rain||storm,sn=S.snowfall,weak=PWEAK()&&!storm;   // зимой дождь слабее; дождь+снег = мокрый снег
+  if(rn){ctx.strokeStyle=`rgba(${wx==='overcast'&&E.amb>.5?'105,114,128':'200,215,235'},${storm?.5:sn?.26:weak?.24:.38})`;ctx.lineWidth=1.1;ctx.beginPath();const sl=storm?9:4,sp=storm?1500:1100;
+    for(let di=0;di<DROPS.length;di+=weak||sn?2:1){const d=DROPS[di];const y=(d[1]+T*sp*d[2])%H,x=(d[0]+y*sl/26+W)%1060+180;ctx.moveTo(x,y);ctx.lineTo(x+sl,y+26*d[2])}ctx.stroke()}
+  if(sn){ctx.fillStyle=`rgba(255,255,255,${rn?.7:.88})`;ctx.beginPath();for(let di=0;di<DROPS.length;di+=rn?2:1){const d=DROPS[di];const y=(d[1]+T*70*d[2])%H,x=(d[0]+Math.sin(T*.8+d[3])*26+W)%1060+180;ctx.moveTo(x,y);ctx.arc(x,y,.7+d[2]*.9,0,7)}ctx.fill()}
+  if(wx==='storm'){if(!RM&&Math.random()<.006)flash=1;if(flash>.02){ctx.fillStyle=`rgba(225,232,255,${flash*.55})`;ctx.fillRect(0,0,W,H);flash*=.86}}
+  if(MOOD[S.mood].smoke){const sg=ctx.createLinearGradient(0,0,0,H);sg.addColorStop(0,css(mix([150,140,128],E.top,.3).map(v=>v*(.3+.7*E.amb)),.5));sg.addColorStop(.6,css([150,138,122].map(v=>v*(.3+.7*E.amb)),.42));sg.addColorStop(1,css([120,110,98].map(v=>v*(.3+.7*E.amb)),.22));ctx.fillStyle=sg;ctx.fillRect(0,0,W,H)}   // дымка от пожаров: бурая пелена
+  if(MOOD[S.mood].vig){const v=ctx.createRadialGradient(708,640,340,708,640,900);v.addColorStop(0,'rgba(20,0,5,0)');v.addColorStop(1,`rgba(30,0,8,${MOOD[S.mood].vig})`);ctx.fillStyle=v;ctx.fillRect(0,0,W,H)}
+  if(S.drawn){ctx.strokeStyle='rgba(40,34,50,.09)';ctx.lineWidth=1;ctx.beginPath();for(let x=-H;x<W;x+=11){ctx.moveTo(x,H);ctx.lineTo(x+H*.5,H*.5+((x*7)%60))}ctx.stroke()}
+  beat*=.94;
+}
+let last=0,start=performance.now();
+function loop(ts){requestAnimationFrame(loop);const gap=RM?1000:S.drawn?85:32;if(ts-last<gap)return;last=ts;T=RM?0:(ts-start)/1000;frame()}
+
+/* ---------- музыка ---------- */
+let AC,master,timer,step=0;
+const OWN=new Audio();OWN.loop=true;
+function setMusic(){
+  clearInterval(timer);if(S.music!=='own')OWN.pause();const tr=TR[S.music]||{};if(S.music==='own'){if(master)master.gain.setTargetAtTime(0,AC.currentTime,.3);OWN.volume=S.open?1:.6;if(OWN.src)OWN.play().catch(()=>{});return}
+  if(!tr.bpm){if(master)master.gain.setTargetAtTime(0,AC.currentTime,.3);return}
+  if(!AC){AC=new (window.AudioContext||window.webkitAudioContext)();master=AC.createGain();const lp=AC.createBiquadFilter();lp.type='lowpass';lp.frequency.value=1700;
+    const dl=AC.createDelay(1),fb=AC.createGain();dl.delayTime.value=.42;fb.gain.value=.42;master.connect(lp);lp.connect(AC.destination);lp.connect(dl);dl.connect(fb);fb.connect(dl);dl.connect(AC.destination)}
+  AC.resume();master.gain.setTargetAtTime(S.open?.5:.3,AC.currentTime,.3);
+  const note=(f,d,v,type)=>{const t=AC.currentTime,o=AC.createOscillator(),g=AC.createGain();o.type=type;o.frequency.value=f;g.gain.setValueAtTime(0,t);g.gain.linearRampToValueAtTime(v,t+.03);g.gain.exponentialRampToValueAtTime(.0001,t+d);o.connect(g);g.connect(master);o.start(t);o.stop(t+d+.05)};
+  const dt=60/tr.bpm/2;step=0;
+  timer=setInterval(()=>{const sc=tr.scale;
+    if(step%16===0){const rt=tr.root/2*Math.pow(2,sc[(step/16|0)%3]/12);note(rt,dt*16,.16,'sine');note(rt*1.5,dt*16,.09,'sine')}
+    if(Math.random()<tr.dens||step%8===0){note(tr.root*Math.pow(2,sc[Math.random()*sc.length|0]/12+(Math.random()<.35?1:0)),dt*(tr.type==='sine'?6:2.5),tr.type==='sawtooth'?.07:.14,tr.type);beat=1}
+    step++},dt*1000);
+}
+
+/* ---------- управление ---------- */
+const $=id=>document.getElementById(id),win=$('window');
+function refresh(){
+  const okW=v=>{const w=WX[v];return(!w.seasons||w.seasons.includes(S.season))&&!(w.not&&w.not.includes(S.season))};
+  if(!okW(S.weather))S.weather=S.weather==='rain'?'sleet':S.weather==='sleet'||S.weather==='snow'?'rain':'clear';if(!okW(S.weather))S.weather='clear';
+  for(const b of $('weather').children)b.hidden=!okW(b.dataset.v)||!!WX[b.dataset.v].hide;
+  if(S.season==='summer')S.snowfall=false;$('snowBtn').hidden=S.season==='summer';
+  $('rainBtn').setAttribute('aria-pressed',S.rain);$('snowBtn').setAttribute('aria-pressed',S.snowfall);
+  env();drawCity();buildClouds();buildLeaves();
+  const st=sunTimes(S.month),lm=S.mood==='calm'&&S.month===2&&S.weather==='frosty'&&S.time>st.sr&&S.time<st.ss?'joy':S.mood;   // февральским морозным днём свет сам по себе яркий
+  const f=[MOOD[lm].f,S.drawn?'url(#sketch) contrast(1.08) saturate(1.15)':''].join(' ').trim();cv.style.filter=f||'none';
+  win.classList.toggle('drawn',S.drawn);win.classList.toggle('open',S.open);
+  const h=Math.floor(S.time)%24,mn=Math.round((S.time%1)*60)%60;
+  $('readout').textContent=`${String(h).padStart(2,'0')}:${String(mn).padStart(2,'0')} · ${SEASON[S.season].n.toLowerCase()} · ${WX[S.weather].n.toLowerCase()}${S.rain&&S.snowfall?', мокрый снег':S.rain?', дождь':S.snowfall?', снег':''}${S.windy?', ветер':''} · ${MOOD[lm].n.toLowerCase()}`;
+  $('time').value=S.time;$('now').setAttribute('aria-pressed',S.live);
+  $('openBtn').setAttribute('aria-pressed',S.open);$('windyBtn').setAttribute('aria-pressed',S.windy);$('openBtn').textContent=S.open?'Закрыть окно':'Открыть окно';
+  for(const b of $('month').children){b.setAttribute('aria-pressed',+b.dataset.m===S.month);b.hidden=SG(MSEASON(+b.dataset.m))!==SG(S.season)}
+  for(const k of['season','weather','mood','music'])for(const b of $(k).children)b.setAttribute('aria-pressed',k==='season'?b.dataset.v===SG(S.season):b.dataset.v===S[k]);
+  for(const b of $('season').children)if(SEASON[b.dataset.v].hide)b.hidden=true;
+  if(master&&(TR[S.music]||{}).bpm)master.gain.setTargetAtTime(S.open?.5:.3,AC.currentTime,.3);OWN.volume=S.open?1:.6;
+  if(RM)frame();
+}
+function chips(key,src){for(const v in src){const b=document.createElement('button');b.className='chip';b.dataset.v=v;b.id=key+'-'+v;b.textContent=src[v].n;
+  b.onclick=()=>{S[key]=v;if(key==='music')setMusic();refresh()};$(key).append(b)}}
+chips('season',SEASON);
+for(let m=1;m<=12;m++){const b=document.createElement('button');b.className='chip';b.dataset.m=m;b.id='month-'+m;b.textContent=MONTHS[m].n;b.onclick=()=>{S.month=m;S.season=MSEASON(m);refresh()};$('month').append(b)}
+for(const b of $('season').children){const f=b.onclick;b.onclick=()=>{S.month=SMONTH[b.dataset.v];f()}}chips('weather',WX);chips('mood',MOOD);chips('music',{off:TR.off});
+// своя музыка: файл с компьютера или телефона играет по кругу вместо встроенной
+{const b=document.createElement('button'),inp=document.createElement('input');b.className='chip';b.id='music-own';b.dataset.v='own';b.textContent='Включить';inp.type='file';inp.accept='audio/*';inp.id='ownFile';inp.hidden=true;
+ b.onclick=()=>inp.click();inp.onchange=()=>{const f=inp.files[0];if(!f)return;OWN.src=URL.createObjectURL(f);S.music='own';setMusic();OWN.play().catch(()=>{});b.textContent='Играет: '+f.name.replace(/\.[^.]+$/,'').slice(0,18);refresh()};$('music').append(b,inp)}
+$('time').oninput=e=>{S.time=+e.target.value;S.live=false;refresh()};
+$('now').onclick=()=>{S.live=true;S.time=nowH();refresh()};
+for(const b of $('tod').children)b.onclick=()=>{S.time=+b.dataset.t;S.live=false;refresh()};
+$('rainBtn').onclick=()=>{S.rain=!S.rain;offFc();refresh()};$('snowBtn').onclick=()=>{S.snowfall=!S.snowfall;offFc();refresh()};
+const offFc=()=>{$('fcBtn').setAttribute('aria-pressed','false');$('fcNote').textContent=''};
+$('windyBtn').onclick=()=>{S.windy=!S.windy;refresh()};
+$('gustBtn').onclick=()=>{gustT=T;if(RM)frame()};
+const toggleOpen=()=>{S.open=!S.open;refresh()};$('hit').onclick=toggleOpen;$('openBtn').onclick=toggleOpen;
+setInterval(()=>{if(S.live){S.time=nowH();refresh()}},60000);
+// «По прогнозу»: текущая погода в Москве (юго-запад, район Воробьёвых гор / Вернадского) из open-meteo.com
+const FC_URL='https://api.open-meteo.com/v1/forecast?latitude=55.67&longitude=37.50&current=weather_code,cloud_cover,temperature_2m,wind_speed_10m&timezone=Europe%2FMoscow';
+function fcWeather(c){const w=c.weather_code,t=c.temperature_2m,sn=S.season;S.rain=false;S.snowfall=false;
+  const sky=()=>sn==='autumn'?'overcast':'cloudy';
+  if(w>=95){if(sn==='winter'){S.snowfall=true;return sky()}return 'storm'}
+  if(w>=71&&w<=77||w===85||w===86){if(sn==='summer')S.rain=true;else S.snowfall=true;return sky()}
+  if(w>=51&&w<=67||w>=80&&w<=82){S.rain=true;if(sn!=='summer'&&t<=1)S.snowfall=true;return sky()}
+  if(w===45||w===48)return 'fog';
+  if(w===3)return sn==='autumn'?'overcast':'cloudy';
+  if(w===2||c.cloud_cover>40)return 'cloudy';
+  return sn==='winter'&&t<=-8?'frosty':'clear'}
+const FCN0={clear:'ясно',cloudy:'облачно',overcast:'пасмурно',rain:'дождь',sleet:'мокрый снег',snow:'снег',fog:'туман',storm:'гроза',frosty:'мороз, ясно'};
+async function applyForecast(){const note=$('fcNote');note.textContent='Смотрю прогноз…';
+  try{const r=await fetch(FC_URL);if(!r.ok)throw 0;const c=(await r.json()).current;
+    const m=new Date().getMonth()+1;S.month=m;S.season=MSEASON(m);S.live=true;S.time=nowH();
+    let w=fcWeather(c);S.weather=w;refresh();if(S.weather!==w){S.weather='clear';refresh()}const FCN=Object.assign({},FCN0);FCN[w]=(FCN0[w]||w)+(S.rain&&S.snowfall?', мокрый снег':S.rain?', дождь':S.snowfall?', снег':'');
+    $('fcBtn').setAttribute('aria-pressed','true');
+    note.textContent=`Сейчас в Москве (юго-запад): ${c.temperature_2m>0?'+':''}${Math.round(c.temperature_2m)}°, ${FCN[w]||w}`}
+  catch(e){note.textContent='Прогноз здесь недоступен — включите погоду вручную';$('fcBtn').setAttribute('aria-pressed','false')}}
+$('fcBtn').onclick=applyForecast;
+for(const b of $('weather').children){const f=b.onclick;b.onclick=()=>{$('fcBtn').setAttribute('aria-pressed','false');$('fcNote').textContent='';f()}}
+refresh();requestAnimationFrame(loop);applyForecast();
+</script>
+<script>
+try{const tg=window.Telegram&&Telegram.WebApp;if(tg&&tg.initData!==undefined&&tg.platform!=='unknown'){document.body.classList.add('tg');tg.ready();tg.expand()}}catch(e){}
+</script>
+</body>
+</html>
