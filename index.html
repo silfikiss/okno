@@ -523,9 +523,9 @@ function frame(){
   ctx.save();ctx.setTransform(1,0,0,1,0,0);ctx.drawImage(city,0,0);ctx.restore();
   // бегущая строка на верхушке купола цирка — единственное, что у него видно чётко
   {const fgc=E.fog>=.9;   // в тумане от цирка остаётся размытый тёплый проблеск бегущей строки
-  if(fgc){const rg=ctx.createRadialGradient(790,656,0,790,656,46);rg.addColorStop(0,'rgba(255,176,80,.62)');rg.addColorStop(1,'rgba(255,176,80,0)');ctx.fillStyle=rg;ctx.fillRect(740,610,100,92)}
-  ctx.save();ctx.globalAlpha=fgc?.7:1;if(fgc)ctx.filter=`blur(${1.6*VS}px)`;ctx.beginPath();ctx.rect(773,652.5,34,7.5);ctx.clip();ctx.fillStyle='#140b08';ctx.fillRect(773,652.5,34,7.5);ctx.font='bold 6.4px sans-serif';ctx.textBaseline='middle';
-  if(!TKW){TKW=ctx.measureText(TK).width;ctx.font='bold 8.5px sans-serif';TMW=ctx.measureText(TM).width;ctx.font='bold 6.4px sans-serif'}ctx.fillStyle='#ffb648';ctx.fillText(TK,807-((T*10)%(TKW+34)),656.6);ctx.restore();ctx.filter='none';
+  ctx.save();ctx.globalAlpha=1;ctx.beginPath();ctx.rect(773,652.5,34,7.5);ctx.clip();   // в тумане светится только сама строка, без ореола вокругctx.fillStyle='#140b08';ctx.fillRect(773,652.5,34,7.5);ctx.font='bold 6.4px sans-serif';ctx.textBaseline='middle';
+  if(!TKW){TKW=ctx.measureText(TK).width;ctx.font='bold 8.5px sans-serif';TMW=ctx.measureText(TM).width;ctx.font='bold 6.4px sans-serif'}ctx.fillStyle='#ffb648';ctx.fillText(TK,807-((T*10)%(TKW+34)),656.6);
+  if(fgc){const ig=ctx.createLinearGradient(773,0,807,0);ig.addColorStop(0,'rgba(255,170,80,0)');ig.addColorStop(.5,'rgba(255,186,96,.62)');ig.addColorStop(1,'rgba(255,170,80,0)');ctx.fillStyle=ig;ctx.fillRect(773,652.5,34,7.5)}ctx.restore();
   if(!fgc){
   
   // бегущая строка у верхушки «Меркурия»: чёрным по белой полосе
