@@ -278,9 +278,9 @@ function drawCity(){
   const c=cc;c.setTransform(1,0,0,1,0,0);c.clearRect(0,0,CS,CS);c.setTransform(VS,0,0,VS,-VX*VS,-VY*VS);const r=rng(11),HZ=664;
   for(let x=370;x<1080;){const w=8+r()*26,h=3+r()*13;rect(c,x,HZ-h,w,h+4,C(mix([150,150,160],[200,185,165],r()),.72,.5),false);x+=w*.9}
   rect(c,0,HZ-1,W,H,C('#6d6a62',.35),false);
-  scaled(c,1042,661,.58,()=>ostankino(c,0,0));
+  scaled(c,929,661,.58,()=>ostankino(c,0,0));
   // две дальние трубы левее Останкинской башни
-  [[930,40],[948,33]].forEach(([x,h])=>{poly(c,[x-2.2,662,x+2.2,662,x+1.3,662-h,x-1.3,662-h],C('#b9b2aa',.6));for(let i=0;i<3;i++)rect(c,x-1.5,662-h+2+i*7,3,3,C('#b5523f',.6),false);if(E.n>.3&&E.fog<.9)circ(c,x,662-h-1.5,1.2,'rgba(255,60,50,.95)')});
+  [[815,40],[833,33]].forEach(([x,h])=>{poly(c,[x-2.2,662,x+2.2,662,x+1.3,662-h,x-1.3,662-h],C('#b9b2aa',.6));for(let i=0;i<3;i++)rect(c,x-1.5,662-h+2+i*7,3,3,C('#b5523f',.6),false);if(E.n>.3&&E.fog<.9)circ(c,x,662-h-1.5,1.2,'rgba(255,60,50,.95)')});
   scaled(c,330,668,1.5,()=>msu(c));
   if(E.fog>=1){const g=c.createLinearGradient(0,478,0,526);g.addColorStop(0,css(E.bot,0));g.addColorStop(1,css(E.bot,1));c.fillStyle=g;c.fillRect(280,478,100,90)}   // низ шпиля тает в тумане
   scaled(c,222.5,668,1.5,()=>moscowCity(c));
@@ -322,10 +322,10 @@ function drawCity(){
     bld(c,r,o)});
   [520,640,730].forEach(x=>poly(c,[x,790,x+20,790,x+10,776],C('#e4dcc8',.05,.4),false));
   crown([[815,775,1075,860,30],[330,805,445,880,22],[800,850,1075,900,30]]);
-  c.save();c.translate(0,-57);brick(c);c.restore();rightSide(c,r);
   const r2=rng(77),vg=c.createLinearGradient(0,790,0,900);vg.addColorStop(0,css(col('#3a332b',0),0));vg.addColorStop(1,C('#2e2924',0));c.fillStyle=vg;c.fillRect(0,790,1075,390);
   for(let i=0;i<2600;i++){const x=r2()*W,v=r2();if(x>1068)continue;const y=Math.min(1155,860+Math.pow(r2(),.7)*300);circ(c,x,y,5+r2()*11,css(col(E.snow?mix([44,46,50],[84,88,94],v*v):veg([46,40,33],[72,58,42],v*v),0),.8))}
   c.strokeStyle=css(col(E.snow?'#c9ccd0':'#6b5d4c',0),.55);c.lineWidth=.8;c.beginPath();for(let i=0;i<700;i++){const x=r2()*1090,y=850+r2()*300,l=30+r2()*90,a=(r2()-.5)*.5;c.moveTo(x,y);c.lineTo(x+Math.sin(a)*l,y-l);c.moveTo(x+Math.sin(a)*l*.5,y-l*.5);c.lineTo(x+Math.sin(a)*l*.5+(r2()-.5)*30,y-l*.5-14-r2()*20)}c.stroke();
+  c.save();c.translate(-113,-57);brick(c);c.restore();c.save();c.translate(-113,0);rightSide(c,r);c.restore();   // дом с карнизом сдвинут левее, чтобы были видны крайние окна
 }
 // Останкинская башня (под карнизом кирпичного дома); ночью красные огни
 function ostankino(c,x,b){const d=.6,k='#b4b8bc';
@@ -339,7 +339,7 @@ function ostankino(c,x,b){const d=.6,k='#b4b8bc';
 // МГУ: ярусы, башенки, шпиль со звездой; ночью подсвечен тёплым снизу вверх
 // MSUON — горит ли подсветка МГУ: примерно две ночи из трёх (по дате), с заката до часа ночи
 function MSUON(){const d=new Date(),k=(d.getFullYear()*372+(d.getMonth()+1)*31+d.getDate()+(S.time<12?-1:0))*2654435761>>>0;return k%3!==0&&!(S.time>=1&&S.time<12)}
-const CIRC={x:985,y:700,k:.3};   // цирк: где стоит и в каком масштабе (ближе к Останкинской башне, меньше)
+const CIRC={x:872,y:700,k:.3};   // цирк: где стоит и в каком масштабе (ближе к Останкинской башне, меньше)
 function msu(c){const d=.4,r=rng(5),n=E.n,ox=122,oy=360;
   const nc=u=>mix([232,150,80],[255,236,190],u);
   const on=u=>u>=.94||MSUON()?1:0;   // подсветка здания включена не каждую ночь и гаснет после часа; шпиль и звезда горят всегда
@@ -418,17 +418,18 @@ function circus(c,x,b){const d=.5,R=92,ey=b-40,Hd=58,n=12;
 function brick(c){const x0=1075,x1=1690,ry=597,r=rng(21),fc='#b59b6c',fr='#ebe7dc';
   rect(c,x0,ry,x1-x0,H-ry+95,C('#8a7655',0,.3));
   {const b0=col('#b0966a',0,.4),b1=col('#c7ab7a',0,.4),b2=col('#9c8058',0,.4);   // кирпичная кладка с перевязкой
-   for(let y=ry,k=0;y<H+95;y+=5,k++)for(let x=x0-(k%2?5.5:0);x<1235;x+=11){const v=r(),xx=Math.max(x0,x+.4);c.fillStyle=css(v<.12?b2:mix(b0,b1,v));c.fillRect(xx,y+.5,x+10.6-xx,4.1)}}
+   for(let y=ry,k=0;y<H+95;y+=5,k++)for(let x=x0-(k%2?5.5:0);x<1345;x+=11){const v=r(),xx=Math.max(x0,x+.4);c.fillStyle=css(v<.12?b2:mix(b0,b1,v));c.fillRect(xx,y+.5,x+10.6-xx,4.1)}}
   const glass=(q,v)=>q<E.n*.3*E.lit?css(mix([255,190,110],[255,236,196],v)):css(mix([44,52,66],E.top,.3).map(z=>z*(.35+.65*E.amb)));
-  const cols=[1098,1168,1193,1258,1550,1620,1672];   // крайние окна у самого угла дома видны в окно
-  for(let f=0;f<9;f++){const wy=630+f*62;
-    for(const wx of cols){const q=r(),v=r(),a=r(),nw=wx===1168||wx===1193?16:wx===1672?18:27;
-      rect(c,wx-2,wy-2,nw+4,38,C(fr,0),false);c.fillStyle=f===0&&wx===1098&&E.n>.2?css([255,214,120]):glass(q,v);c.fillRect(wx,wy,nw,34);   // верхнее крайнее окно ночью горит всегда
-      if(nw>20){rect(c,wx+nw*.55,wy,1.6,34,C(fr,0),false);rect(c,wx,wy+11,nw*.55,1.4,C(fr,0),false)}
-      if(a<.12&&nw>20)rect(c,wx-14,wy+36,16,11,C('#dcdfe2',0))}
-    // лоджии
-    const q=r(),v=r();rect(c,1300,wy-6,76,50,C(f%3?'#9b9689':'#b9b2a0',0,.3));c.fillStyle=glass(q,v);c.fillRect(1304,wy-2,68,26);
-    for(let k=1;k<4;k++)rect(c,1304+k*17,wy-2,1.5,26,C(fr,0),false);rect(c,1300,wy+26,76,18,C(f%2?'#8f8a7e':'#a59d8c',0,.2),false)}
+  // окна как на панораме: от угла дома (x0) — широкое окно, узкое окно лестницы (сдвинуто на пол-этажа), окно, лоджии, ещё окна.
+  //   8 этажей, шаг этажа 60. Ночью горит одно окно — верхнее крайнее левое
+  const cols=[[x0+143,25],[x0+305,25],[x0+480,25],[x0+545,25]];
+  for(let f=0;f<8;f++){const wy=630+f*60;
+    for(const[wx,nw]of cols){const keep=f===0&&wx===x0+143;
+      rect(c,wx-2,wy-2,nw+4,32,C(fr,0),false);c.fillStyle=keep&&E.n>.2?css([255,214,120]):glass(1,0);c.fillRect(wx,wy,nw,28);
+      rect(c,wx+nw*.55,wy,1.4,28,C(fr,0),false);rect(c,wx,wy+9,nw*.55,1.3,C(fr,0),false)}
+    if(f<7){const sy=wy+30;rect(c,x0+223,sy-2,27,24,C(fr,0),false);c.fillStyle=glass(1,0);c.fillRect(x0+225,sy,23,20);rect(c,x0+236,sy,1.3,20,C(fr,0),false)}   // лестница
+    rect(c,x0+362,wy-4,74,40,C(f%3?'#9b9689':'#b9b2a0',0,.3));c.fillStyle=glass(1,0);c.fillRect(x0+366,wy,66,22);   // лоджии
+    for(let k=1;k<4;k++)rect(c,x0+366+k*16.5,wy,1.4,22,C(fr,0),false);rect(c,x0+362,wy+22,74,14,C(f%2?'#8f8a7e':'#a59d8c',0,.2),false)}
   circ(c,1467,662,10,C('#e6e8ea',0));circ(c,1467,662,2,C('#666',0));
   rect(c,1359,ry+8,4,H,C('#8e8a80',0),false);
   // крыша
@@ -617,8 +618,8 @@ function frame(){
   ctx.font='bold 7.4px sans-serif';ctx.textBaseline='middle';const cyc=TM.map(t=>ctx.measureText(t).width+14),per=(cyc[0]+cyc[1])/9,ph=(T%per)*9,i=ph<cyc[0]?0:1,off=i?ph-cyc[0]:ph;
   ctx.fillStyle='#0b0b0c';ctx.fillText(TM[i],MX+13.6-off,610.8);ctx.restore()}}
   // дым из труб идёт не всегда: то появляется, то сходит на нет
-  const sk=clamp(Math.sin(T*.045)*2+.95)*(E.fog<.9);if(sk>.01){ctx.save();ctx.beginPath();ctx.moveTo(0,0);ctx.lineTo(W,0);ctx.lineTo(W,504);ctx.lineTo(1262,504);ctx.lineTo(1026,538);ctx.lineTo(1022,538);ctx.lineTo(1022,551);ctx.lineTo(1027,551);ctx.lineTo(1075,568);ctx.lineTo(1075,700);ctx.lineTo(0,700);ctx.closePath();ctx.clip();const sc=mix(cb,[205,208,214].map(v=>v*(.4+.6*E.amb)),.6);
-    for(const[x0,y0]of[[930,621],[948,628]])for(let i=0;i<30;i++){const a=(i/30+T*.02)%1;circ(ctx,x0+(a*90+a*a*300)*Math.min(1.6,E.wind)+Math.sin(i*2.1+T*.4)*4*a,y0-a*150*(1-a*.25)-Math.sin(i*1.3)*7*a,3.5+a*36,css(sc,sk*Math.pow(1-a,1.3)*.85))}ctx.restore();scaled(ctx,1042,661,.58,()=>ostankino(ctx,0,0))}
+  const sk=clamp(Math.sin(T*.045)*2+.95)*(E.fog<.9);if(sk>.01){ctx.save();ctx.beginPath();ctx.moveTo(0,0);ctx.lineTo(W,0);ctx.lineTo(W,504);ctx.lineTo(1149,504);ctx.lineTo(913,538);ctx.lineTo(909,538);ctx.lineTo(909,551);ctx.lineTo(914,551);ctx.lineTo(962,568);ctx.lineTo(962,700);ctx.lineTo(0,700);ctx.closePath();ctx.clip();const sc=mix(cb,[205,208,214].map(v=>v*(.4+.6*E.amb)),.6);
+    for(const[x0,y0]of[[815,621],[833,628]])for(let i=0;i<30;i++){const a=(i/30+T*.02)%1;circ(ctx,x0+(a*90+a*a*300)*Math.min(1.6,E.wind)+Math.sin(i*2.1+T*.4)*4*a,y0-a*150*(1-a*.25)-Math.sin(i*1.3)*7*a,3.5+a*36,css(sc,sk*Math.pow(1-a,1.3)*.85))}ctx.restore();scaled(ctx,1042,661,.58,()=>ostankino(ctx,0,0))}
   if(E.fog){const fg=ctx.createLinearGradient(0,380,0,H);fg.addColorStop(0,css(E.bot,0));fg.addColorStop(.45,css(E.bot,.55*E.fog));fg.addColorStop(1,css(E.bot,.3*E.fog));ctx.fillStyle=fg;ctx.fillRect(0,380,W,H)}
   // провода
   ctx.strokeStyle=css(col('#20242c',0),.85);ctx.lineWidth=1.4;ctx.beginPath();
