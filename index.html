@@ -202,7 +202,7 @@ function env(){
   if(S.weather==='warm'){const n0=clamp((.55-amb)/.38);top=mix(top,[44,46,92],.55*n0);bot=mix(bot,[150,112,120],.55*n0)}   // летняя ночь: небо светлее и теплее обычного
   if(S.weather==='frost'){top=mix(top,[205,215,228].map(v=>v*(.2+.8*amb)),.35);bot=mix(bot,[235,236,240].map(v=>v*(.2+.8*amb)),.45)}
   let L=mix([.17,.21,.36],[1,1,1],amb);const wm=mix([1,1,1],ev&&wint?[1.08,.82,.9]:!ev&&summ?[1.04,.99,.92]:[1.1,.9,.72],g*.7);L=L.map((v,j)=>v*wm[j]);
-  E={top,bot,amb,g,L,gm,sunc,ev,lit:(S.time>=16&&S.time<23.5?1.45:S.time>=6&&S.time<9?1.2:.55),n:clamp((.55-amb)/.38),fog:S.weather==='fog'?1:PK()?.35:S.weather==='storm'?.45:0,
+  E={gs:S.weather==='goldsun'?clamp((amb-.25)/.4):0,top,bot,amb,g,L,gm,sunc,ev,lit:(S.time>=16&&S.time<23.5?1.45:S.time>=6&&S.time<9?1.2:.55),n:clamp((.55-amb)/.38),fog:S.weather==='fog'?1:PK()?.35:S.weather==='storm'?.45:0,
      snow:S.snowfall||S.weather==='frost'||S.season==='winter',frost:S.weather==='frost',wind:wx.wind*MOOD[S.mood].wind*(S.windy?2.4:1),ink:'rgba(28,24,36,.8)'};E.line=`rgba(34,30,40,${.42*(1-E.n*.55)*(1-E.fog)})`;
   {const dayc=mix(mix([255,255,255],[255,198,165],E.g*.8),[150,154,164],clamp((E.gm-.35)*1.3)),ck=clamp((E.amb-.12)/.5);E.cb=mix([92,70,84],dayc,ck);E.cs=mix([58,46,62],dayc.map((v,j)=>v*(j==2?.86:.78)),ck)}
 }
@@ -241,6 +241,9 @@ function scaled(c,x,y,k,fn){c.save();c.translate(x,y);c.scale(k,k);fn();c.restor
 const fogmix=(c,d)=>mix(c,E.bot,(E.fog>=1?1:E.fog*.6)*clamp((d-.052)*120+.6*(d>.03)));
 // winCol — цвет одного окна: горит или тёмное
 const winCol=(q,v,d,p)=>q<E.n*.55*p*E.lit?css(fogmix(mix([255,196,120],[255,240,205],v),d)):css(fogmix(mix(mix([52,62,80],E.top,.35).map(z=>z*(.3+.7*E.amb)),E.bot,d*.7),d));
+// glint — блики низкого солнца на гребне крыши: короткие яркие штрихи, а не сплошное свечение
+function glint(c,x1,y1,x2,y2,w,r){const n=Math.max(3,w/9|0);c.save();c.lineCap="round";for(let i=0;i<n;i++){const t=r(),l=.04+r()*.1,a=(.75+.25*r())*E.gs;
+  c.strokeStyle=`rgba(255,${226+r()*24|0},${150+r()*60|0},${a})`;c.lineWidth=1.6+r()*1.8;c.beginPath();c.moveTo(x1+(x2-x1)*t,y1+(y2-y1)*t);c.lineTo(x1+(x2-x1)*Math.min(1,t+l),y1+(y2-y1)*Math.min(1,t+l));c.stroke()}c.restore()}
 function bld(c,r,o){ // кирпичная пятиэтажка: фасадом (end=0) или торцом, с уходящей вправо/влево длинной стороной
   // чем ближе дом к горизонту, тем меньше видно крыши: смотрим сверху, с высокого этажа
   const{x,y,w,h,f,d=.15,sun=.8,end=0,rk='#6c7889',sl=.1}=o,fh=h/5,rh=(o.rh??h*(.2+.35*clamp((y-665)/140)))*.72,rc=roofC(rk,d),p=.5,det=h>=30;
@@ -258,7 +261,8 @@ function bld(c,r,o){ // кирпичная пятиэтажка: фасадом 
     rect(c,x0-2,y-.4,ww+4,cz,trim(sn),false);rect(c,x0,y+fh*1.02,ww,Math.max(.6,h*.022),trim(sn),false)};
   const seams=(a,b,q,s)=>{if(!det)return;c.strokeStyle=css(col('#4c5868',d),.4);c.lineWidth=.5;c.beginPath();for(let t=.04;t<1;t+=7/Math.max(40,Math.abs(b[0]-a[0]))){c.moveTo(a[0]+(b[0]-a[0])*t,a[1]+(b[1]-a[1])*t);c.lineTo(s[0]+(q[0]-s[0])*t,s[1]+(q[1]-s[1])*t)}c.stroke()};
   if(!end){wall(x,w,sun,Math.max(3,Math.round(w/(fh*1.05))),true);
-    poly(c,[x-2.5,y,x+w+2.5,y,x+w-rh*.8,y-rh,x+rh*.8,y-rh],rc);seams([x-2.5,y],[x+w+2.5,y],[x+w-rh*.8,y-rh],[x+rh*.8,y-rh]);
+    poly(c,[x-2.5,y,x+w+2.5,y,x+w-rh*.8,y-rh,x+rh*.8,y-rh],rc);
+    if(E.gs>0)glint(c,x+rh*.8,y-rh,x+w-rh*.8,y-rh,w,r);seams([x-2.5,y],[x+w+2.5,y],[x+w-rh*.8,y-rh],[x+rh*.8,y-rh]);
     for(let k=1;k<5;k++)if(r()<.6)rect(c,x+w*k/5+r()*6,y-rh-3,3,5,C('#8b7b6c',d),false);return}
   const ew=o.ew??h*.7,L=w,s=L*sl,X0=end>0?x+ew:x,X1=X0+end*L,es=o.es??sun,ss=o.ss??.15;
   poly(c,[X0,y,X1,y-s,X1,y-s+h*.86,X0,y+h],C(f,d,ss));
@@ -268,7 +272,7 @@ function bld(c,r,o){ // кирпичная пятиэтажка: фасадом 
     if(det){c.fillStyle=trim(ss);c.fillRect(wx-.5,wy-.5,fh*.4+1,fh*.5*k+1)}c.fillStyle=winCol(q,v,d,p);c.fillRect(wx,wy,fh*.4,fh*.5*k)}
   c.strokeStyle=trim(ss);c.lineWidth=cz;c.beginPath();c.moveTo(X0,y+cz/2);c.lineTo(X1,y-s+cz/2);c.stroke();
   const ra=[X0,y],rb=[X1,y-s],rq=[x+ew/2+end*L,y-rh-s],rs=[x+ew/2,y-rh];
-  poly(c,[...rs,...rq,...rb,...ra],rc);seams(ra,rb,rq,rs);
+  poly(c,[...rs,...rq,...rb,...ra],rc);if(E.gs>0)glint(c,rs[0],rs[1],rq[0],rq[1],L,r);seams(ra,rb,rq,rs);
   wall(x,ew,es,3,false);poly(c,[x-1.5,y,x+ew+1.5,y,x+ew/2,y-rh],C(f,d,es));
   if(det){c.fillStyle=winCol(r(),r(),d,.2);c.fillRect(x+ew/2-fh*.15,y-rh*.55,fh*.3,fh*.3)}
 }
@@ -444,7 +448,7 @@ function brick(c){const x0=1075,x1=1690,ry=597,r=rng(21),fc='#b59b6c',fr='#ebe7d
   circ(c,1467,662,10,C('#e6e8ea',0));circ(c,1467,662,2,C('#666',0));
   rect(c,1359,ry+8,4,H,C('#8e8a80',0),false);
   // крыша
-  poly(c,[1026,ry,1262,562,x1,562,x1,ry],roofC('#a9b4c0',0));rect(c,1120,ry-68,1.8,50,C('#4b4f55',0),false);rect(c,1108,ry-62,26,1.4,C('#4b4f55',0),false);rect(c,1112,ry-54,18,1.4,C('#4b4f55',0),false);
+  poly(c,[1026,ry,1262,562,x1,562,x1,ry],roofC('#a9b4c0',0));if(E.gs>0){glint(c,1262,562,x1,562,x1-1262,r);glint(c,1026,ry,1262,562,240,r)}rect(c,1120,ry-68,1.8,50,C('#4b4f55',0),false);rect(c,1108,ry-62,26,1.4,C('#4b4f55',0),false);rect(c,1112,ry-54,18,1.4,C('#4b4f55',0),false);
   c.strokeStyle=css(col('#7d8792',0),.55);c.lineWidth=1;c.beginPath();for(let x=1280;x<x1;x+=20){c.moveTo(x,562);c.lineTo(x-6,ry)}for(let i=1;i<9;i++){c.moveTo(1026+i*26,ry-i*3.86);c.lineTo(1026+i*26-3,ry)}c.stroke();
   rect(c,1022,ry-1,x1-1022,12,C('#d8d3c6',0,.3));poly(c,[1027,ry+11,1082,ry+11,1082,ry+28],C('#5f5547',0));rect(c,x0,ry+11,x1-x0,6,C('#6f5f48',0),false);
   rect(c,1197,534,7,30,C('#f1f1ef',0),false);circ(c,1200.5,531,4.5,C('#fafafa',0));
@@ -487,8 +491,8 @@ function mkTree(x,top,lean,seed,near){ // клён, как на панораме
     if(d>=3){const n=Math.max(1,Math.round(l/(sc<1?19:34))),   /* дальние клёны справа: листья мельче, но их больше */nx=-Math.sin(a),ny=Math.cos(a);for(let j=0;j<n;j++){const t=(j+.5+(r()-.5)*.3)/n,o=((j+d)%2?1:-1)*(9+r()*7);
       const ly=y+(y2-y)*t+ny*o,lx=x+(x2-x)*t+nx*o,tip=ly<1160-h*.8;if(lx>455&&lx<680&&ly>555&&ly<690&&r()<.72-.5*(lx-455)/225)continue;if(lx>915&&lx<962&&ly>585&&ly<668&&r()<.85)continue;   /* перед Москвой-Сити листья реже — она мерцает сквозь них */
       if(!tip&&ly<650&&ly>1160-h*.85&&r()<.45)continue;   // между верхушкой и крышами листья реже   // на макушке листья мельче; осенью и весной ещё и реже
-      leaves.push({bx:x+(x2-x)*t+nx*o*.22,by:y+(y2-y)*t+ny*o*.22,x:x+(x2-x)*t+nx*o,y:ly,s:tip?.45+r()*.22:(.75+r()*.6)*sc,p:r()*6.28,k:r()*5|0,a:Math.PI+(r()-.5)*3.4,d,tip,tq:r()});
-      if(ly<1160-h*.45){const t2=Math.min(1,t+.5/n);leaves.push({bx:0,by:0,x:x+(x2-x)*t2-nx*o*.8,y:y+(y2-y)*t2-ny*o*.8,s:tip?.5+r()*.2:(.75+r()*.5)*sc,p:r()*6.28,k:r()*5|0,a:Math.PI+(r()-.5)*3.4,d,so:true})}}}   // летом на верхних ветках листьев больше
+      leaves.push({ax:x+(x2-x)*t,ay:y+(y2-y)*t,bx:x+(x2-x)*t+nx*o*.22,by:y+(y2-y)*t+ny*o*.22,x:x+(x2-x)*t+nx*o,y:ly,s:tip?.45+r()*.22:(.75+r()*.6)*sc,p:r()*6.28,k:r()*5|0,a:Math.PI+(r()-.5)*3.4,d,tip,tq:r()});
+      if(ly<1160-h*.45){const t2=Math.min(1,t+.5/n);leaves.push({ax:x+(x2-x)*t2,ay:y+(y2-y)*t2,bx:0,by:0,x:x+(x2-x)*t2-nx*o*.8,y:y+(y2-y)*t2-ny*o*.8,s:tip?.5+r()*.2:(.75+r()*.5)*sc,p:r()*6.28,k:r()*5|0,a:Math.PI+(r()-.5)*3.4,d,so:true})}}}   // летом на верхних ветках листьев больше
     return[x2,y2]};
   const twig=(x,y,a,l,d)=>{const[x2,y2]=seg(x,y,a,l,d);if(l>16){twig(x2,y2,a-.38,l*.42,7);twig(x2,y2,a+.38,l*.42,7)}};
   const limb=(x,y,a,len,d)=>{const n=3+(len>120);for(let i=0;i<n;i++){const l=len/n*(1.15-.1*i),dd=Math.min(7,d+i);[x,y]=seg(x,y,a,l,dd);
@@ -507,7 +511,7 @@ const TREES=[[247,560,.06,1],[365,585,-.05,2],[505,367,.02,3,1.3],[600,580,.08,4
 function mkNear(t){const r=rng(99),segs=[[],[],[],[],[],[],[],[]],leaves=[];let y=656,a=-.18,x=t.segs[0][0];
   for(let i=1;i<t.trunk.length;i++){const[p,q]=[t.trunk[i-1],t.trunk[i]];if((p[1]-y)*(q[1]-y)<=0){x=p[0]+(q[0]-p[0])*(y-p[1])/(q[1]-p[1]||1)}}   // точка именно на стволе
   const put=(x,y,x2,y2,d,lv=true)=>{segs[d].push(x,y,x2,y2);if(!lv)return;const aa=Math.atan2(y2-y,x2-x),nx=-Math.sin(aa),ny=Math.cos(aa),n=Math.max(1,Math.round(Math.hypot(x2-x,y2-y)/34));
-    for(let j=0;j<n;j++){const tt=(j+.5)/n,o=(j%2?1:-1)*(12+r()*8);leaves.push({bx:x+(x2-x)*tt+nx*o*.2,by:y+(y2-y)*tt+ny*o*.2,x:x+(x2-x)*tt+nx*o,y:y+(y2-y)*tt+ny*o,s:1.12+r()*.13,p:r()*6.28,k:r()*5|0,a:Math.PI+(r()-.5)*3.4,d})}};
+    for(let j=0;j<n;j++){const tt=(j+.5)/n,o=(j%2?1:-1)*(12+r()*8);leaves.push({ax:x+(x2-x)*tt,ay:y+(y2-y)*tt,bx:x+(x2-x)*tt+nx*o*.2,by:y+(y2-y)*tt+ny*o*.2,x:x+(x2-x)*tt+nx*o,y:y+(y2-y)*tt+ny*o,s:1.12+r()*.13,p:r()*6.28,k:r()*5|0,a:Math.PI+(r()-.5)*3.4,d})}};
   const fork=(x,y,a,l,d)=>{const x2=x+Math.cos(a)*l,y2=y+Math.sin(a)*l;put(x,y,x2,y2,d);if(l>14){for(const sd of[-1,1])fork(x2,y2,a+sd*(.34+r()*.2)-.08,l*(.5+r()*.15),Math.min(7,d+1))}};
   const bend=[.36,-.5,.2,.44,-.4,.16,.4,-.3,.22];   // ветка изгибается коленцами, а не идёт прямо
   for(let i=0;i<9;i++){const l=36-i*2.6,x2=x+Math.cos(a)*l,y2=y+Math.sin(a)*l;put(x,y,x2,y2,Math.min(7,3+(i>>1)),i>0);
@@ -522,11 +526,11 @@ const br=rng(41),BAND={kind:0,leaves:Array.from({length:800},()=>({x:185+Math.po
 {const r=rng(43),segs=[[],[],[],[],[],[],[],[]],stems=[];
  for(let x=190;x<1240;x+=46+r()*30){let px=x,py=1170,a=-Math.PI/2+(r()-.5)*.3;const pts=[[px,py]];for(let i=0;i<6;i++){const l=55+r()*25;const x2=px+Math.cos(a)*l,y2=py+Math.sin(a)*l;segs[Math.min(7,2+i)].push(px,py,x2,y2);px=x2;py=y2;pts.push([px,py]);a+=(r()-.5)*.35}stems.push(pts)}
  for(const l of BAND.leaves){let best=null,bd=1e9;for(const st of stems)for(const q of st){const dd=Math.hypot(q[0]-l.x,q[1]-l.y)+(q[1]<l.y?60:0);if(dd<bd){bd=dd;best=q}}
-   if(best&&bd<190)segs[7].push(best[0],best[1],l.x+(r()-.5)*4,l.y+6)}
+   if(best&&bd<190)segs[7].push(best[0],best[1],l.x,l.y)}
  BAND.segs=segs;BAND.w=4.2;BAND.tp=.8;BAND.bg=true}
 // EXTRA — запас под отдельные листья (сейчас пусто); ниже каждому листу заранее выбирается поворот и размер
 const EXTRA={kind:0,leaves:[]};
-for(const t of [BAND,EXTRA,...TREES])for(const l of t.leaves){l.ri=((Math.round(l.a/6.283*12)%12)+12)%12;l.z=l.s<.75?0:l.s<1.1?1:2}
+for(const t of [BAND,EXTRA,...TREES])for(const l of t.leaves){if(l.ax===undefined){l.ax=l.x;l.ay=l.y}l.ri=((Math.round(l.a/6.283*12)%12)+12)%12;l.z=l.s<.75?0:l.s<1.1?1:2}
 // цвета листьев: LEAF — старая палитра, LEAFS — летние зелёные
 const LEAF=['#6f8a3a','#9aa53c','#d6b23a','#d98a2e','#b5562a'],LEAFS=['#3f9e2c','#52b436','#66c440','#7bd04c','#48aa30'];
 // veg — цвет зарослей внизу по сезону
@@ -572,8 +576,10 @@ function drawTrees(){
   ctx.globalAlpha=.45;branches(0,1,1);ctx.globalAlpha=1;branches(1,8,1);
   // каждый лист — один и тот же: плавно качается сам по себе, со своей фазой и скоростью, поворот постоянный
   const leaves=(m)=>{ctx.setTransform(1,0,0,1,0,0);for(const t of [BAND,...TREES,EXTRA]){const L=t.leaves;for(let i=m;i<L.length;i+=3){const l=L[i];if(aut&&t!==BAND&&l.p>4.1)continue;if(S.month===5&&l.p>4.6)continue;if(S.season!=='summer'&&(l.so||l.tip&&l.tq<.5))continue;const kk=Math.max(0,(H-l.y)/800),
-      x=l.x+sw(l.x,l.y)+Math.sin(T*(1.1+l.s*.7)+l.p)*2.2*Math.min(w,1.3)+g*(4+l.s*3)*Math.pow(kk,1.2),y=l.y+Math.cos(T*(.9+l.s*.5)+l.p*1.7)*1.4*Math.min(w,1.3)-g*5*kk;
-      ctx.drawImage(ATL,((aut?(l.ri+6)%12:l.ri)*2+(g>.6&&Math.sin(T*1.3+l.p*5)>.3?1:0))*CELL,((t.kind*5+l.k)*3+l.z)*CELL,CELL,CELL,(x-VX)*VS-CELL/2,(y-VY)*VS-CELL/2,CELL,CELL)}}ctx.setTransform(VS,0,0,VS,-VX*VS,-VY*VS)};
+      // лист держится черешком за ветку: точка крепления движется вместе с веткой, лист чуть покачивается вокруг неё
+      ri=aut?(l.ri+6)%12:l.ri,th=ri*2*Math.PI/NR,st=(t.kind?24:37)/2*SZ[l.z]*.96,fl=Math.sin(T*(1.1+l.s*.7)+l.p)*.7*Math.min(w,1.3),
+      x=l.ax+sw(l.ax,l.ay)+Math.sin(th)*st+fl,y=l.ay-Math.cos(th)*st+Math.abs(fl)*.4;
+      ctx.drawImage(ATL,(ri*2+(g>.6&&Math.sin(T*1.3+l.p*5)>.3?1:0))*CELL,((t.kind*5+l.k)*3+l.z)*CELL,CELL,CELL,(x-VX)*VS-CELL/2,(y-VY)*VS-CELL/2,CELL,CELL)}}ctx.setTransform(VS,0,0,VS,-VX*VS,-VY*VS)};
   leaves(0);leaves(1);
   // главные ветви проступают сквозь листву, как на снимке, и часть листьев ложится поверх них
   ctx.save();ctx.beginPath();ctx.rect(0,0,W,720);ctx.clip();ctx.globalAlpha=.9;branches(1,4,1.5);ctx.restore();
@@ -614,7 +620,7 @@ function frame(){
   // облака: готовые мягкие спрайты, у горизонта мельче, площе и медленнее, выше — крупнее
   // «Солнце сквозь облака»: низкое жёлтое солнце выглядывает слева (запад) между облаками
   const gs=S.weather==='goldsun'?clamp((E.amb-.25)/.4):0;
-  if(gs>0){const sx=262,sy=330+150*clamp((S.time-14)/4),hg=ctx.createRadialGradient(sx,sy,0,sx,sy,260);hg.addColorStop(0,`rgba(255,236,160,${.8*gs})`);hg.addColorStop(.25,`rgba(255,214,120,${.35*gs})`);hg.addColorStop(1,'rgba(255,200,110,0)');ctx.fillStyle=hg;ctx.fillRect(0,sy-260,520,520);
+  if(gs>0){const sx=262,sy=330+150*clamp((S.time-14)/4),hg=ctx.createRadialGradient(sx,sy,0,sx,sy,90);hg.addColorStop(0,`rgba(255,236,160,${.8*gs})`);hg.addColorStop(.25,`rgba(255,214,120,${.35*gs})`);hg.addColorStop(1,'rgba(255,200,110,0)');ctx.fillStyle=hg;ctx.fillRect(sx-90,sy-90,180,180);
     circ(ctx,sx,sy,30,`rgba(255,248,214,${gs})`)}
   const cover=S.weather==='overcast'||S.weather==='fog'?0:Math.max(WX[S.weather].cover,PK()?WX[PK()].cover:0),cb=E.cb;
   ctx.save();ctx.beginPath();ctx.rect(0,0,W,662);ctx.clip();
@@ -644,9 +650,6 @@ function frame(){
   ctx.strokeStyle=css(col('#20242c',0),.85);ctx.lineWidth=1.4;ctx.beginPath();
   WIRES.forEach((w,i)=>{const mx=(w[0]+w[2])/2,my=(w[1]+w[3])/2+26+Math.sin(T*1.2+i)*2.5*E.wind;ctx.moveTo(w[0],w[1]);ctx.quadraticCurveTo(mx,my,w[2],w[3])});ctx.stroke();
   drawTrees();
-  // солнечный свет заливает часть вида слева — тёплым косым потоком
-  if(gs>0){const sx=262,sy=330+150*clamp((S.time-14)/4);ctx.save();ctx.globalCompositeOperation='soft-light';const lg=ctx.createLinearGradient(sx,sy,sx+900,sy+500);lg.addColorStop(0,`rgba(255,200,80,${.9*gs})`);lg.addColorStop(.55,`rgba(255,190,90,${.45*gs})`);lg.addColorStop(1,'rgba(255,190,90,0)');ctx.fillStyle=lg;ctx.fillRect(0,0,W,H);ctx.restore();
-    ctx.save();ctx.globalCompositeOperation='screen';const rg=ctx.createRadialGradient(sx,sy,0,sx,sy,700);rg.addColorStop(0,`rgba(255,214,120,${.45*gs})`);rg.addColorStop(1,'rgba(255,190,90,0)');ctx.fillStyle=rg;ctx.fillRect(0,0,W,H);ctx.restore()}
   // осадки
   const wx=S.weather,storm=wx==='storm',rn=S.rain||storm,sn=S.snowfall,weak=PWEAK()&&!storm;   // зимой дождь слабее; дождь+снег = мокрый снег
   if(rn){ctx.strokeStyle=`rgba(${wx==='overcast'&&E.amb>.5?'105,114,128':'200,215,235'},${storm?.5:sn?.26:weak?.24:.38})`;ctx.lineWidth=1.1;ctx.beginPath();const sl=storm?9:4,sp=storm?1500:1100;
