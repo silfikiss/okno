@@ -145,7 +145,7 @@ const KEY=[[0,'#070b1c','#151a33',.1],[4.5,'#0d1330','#2a2748',.14],[6,'#3c5a9c'
 //   wind — сила ветра, seasons — только в эти времена года, not — кроме этих, hide — не показывать кнопку
 const WX={clear:{n:'Ясно',cover:0,gm:0,wind:1},cloudy:{n:'Облачно',cover:.7,gm:0,wind:1.1},rain:{n:'Дождь',cover:1,gm:.86,wind:1.6,hide:1},sleet:{n:'Мокрый снег',cover:1,gm:.84,wind:1.4,hide:1},
   snow:{n:'Снег',cover:.9,gm:.62,wind:.9,hide:1},fog:{n:'Туман',cover:0,gm:.9,wind:.5},storm:{n:'Гроза',cover:1,gm:.88,wind:2.6,not:['winter']},
-  overcast:{n:'Пасмурно',cover:0,gm:.3,wind:.9,seasons:['autumn']},frost:{n:'Иней',cover:0,gm:.15,wind:.35,seasons:['winter','fav']},frosty:{n:'Морозное небо',cover:0,gm:0,wind:.5,seasons:['winter']},crimson:{n:'Малиновый закат',cover:0,gm:0,wind:.8},warm:{n:'Тёплое небо',cover:0,gm:0,wind:.8,seasons:['summer']}};   // у некоторых погод свои времена года
+  overcast:{n:'Пасмурно',cover:0,gm:.3,wind:.9,seasons:['autumn']},frost:{n:'Иней',cover:0,gm:.15,wind:.35,seasons:['winter','fav']},frosty:{n:'Морозное небо',cover:0,gm:0,wind:.5,seasons:['winter']},goldsun:{n:'Солнце сквозь облака',cover:.55,gm:0,wind:1},crimson:{n:'Малиновый закат',cover:0,gm:0,wind:.8},warm:{n:'Тёплое небо',cover:0,gm:0,wind:.8,seasons:['summer']}};   // у некоторых погод свои времена года
 // MOOD — блок «Свет»: f — фильтр поверх картинки (яркость, насыщенность), smoke — дымная пелена, haze — розовая дымка
 const MOOD={calm:{n:'Обычный',f:'',wind:1},sad:{n:'Тусклый',f:'saturate(.45) brightness(.86)',wind:1},
   joy:{n:'Яркий',f:'saturate(1.35) brightness(1.1) contrast(1.05)',wind:1},anx:{n:'Дым',f:'saturate(.7) contrast(.9) sepia(.25)',wind:1,smoke:1},
@@ -198,6 +198,7 @@ function env(){
   if(S.weather==='overcast'){const k=clamp(amb*1.1),wh=mix([40,29,24],[226,228,231],k);top=mix(wh,[22,16,14],.35*(1-k)+.1*k);bot=mix(wh,mix([62,44,34],[255,255,255],k),.25)}   // ровное белое небо; ночью подсвечено городом в бурый
   if(S.weather==='frosty'){const nn=clamp((.55-amb)/.38);top=mix(top,[10,18,52],nn*.7);bot=mix(bot,[34,52,104],nn*.6)}   // морозная ясная ночь: глубокая синяя, без городского зарева
   if(S.weather==='frosty'){const d0=clamp((amb-.3)/.5);top=mix(top,[52,118,222],.5*d0);bot=mix(bot,[196,224,252],.45*d0);amb=Math.min(1,amb+.06*d0)}   // морозное небо: глубокое ясное, как весной, воздух прозрачный
+  if(S.weather==='goldsun'){const d0=clamp((amb-.25)/.4);top=mix(top,[74,138,222],.65*d0);bot=mix(bot,[200,222,242],.55*d0)}   // небо остаётся голубым, хотя солнце уже низко
   if(S.weather==='warm'){const n0=clamp((.55-amb)/.38);top=mix(top,[44,46,92],.55*n0);bot=mix(bot,[150,112,120],.55*n0)}   // летняя ночь: небо светлее и теплее обычного
   if(S.weather==='frost'){top=mix(top,[205,215,228].map(v=>v*(.2+.8*amb)),.35);bot=mix(bot,[235,236,240].map(v=>v*(.2+.8*amb)),.45)}
   let L=mix([.17,.21,.36],[1,1,1],amb);const wm=mix([1,1,1],ev&&wint?[1.08,.82,.9]:!ev&&summ?[1.04,.99,.92]:[1.1,.9,.72],g*.7);L=L.map((v,j)=>v*wm[j]);
@@ -611,6 +612,10 @@ function frame(){
   if(E.g>.02){const ev=E.ev,gx=ev?120:1260,rg=ctx.createRadialGradient(gx,640,0,gx,640,1500);rg.addColorStop(0,css(E.sunc,.7*E.g));rg.addColorStop(1,'rgba(255,170,110,0)');ctx.fillStyle=rg;ctx.fillRect(0,0,W,700)}
   // облака
   // облака: готовые мягкие спрайты, у горизонта мельче, площе и медленнее, выше — крупнее
+  // «Солнце сквозь облака»: низкое жёлтое солнце выглядывает слева (запад) между облаками
+  const gs=S.weather==='goldsun'?clamp((E.amb-.25)/.4):0;
+  if(gs>0){const sx=262,sy=330+150*clamp((S.time-14)/4),hg=ctx.createRadialGradient(sx,sy,0,sx,sy,260);hg.addColorStop(0,`rgba(255,236,160,${.8*gs})`);hg.addColorStop(.25,`rgba(255,214,120,${.35*gs})`);hg.addColorStop(1,'rgba(255,200,110,0)');ctx.fillStyle=hg;ctx.fillRect(0,sy-260,520,520);
+    circ(ctx,sx,sy,30,`rgba(255,248,214,${gs})`)}
   const cover=S.weather==='overcast'||S.weather==='fog'?0:Math.max(WX[S.weather].cover,PK()?WX[PK()].cover:0),cb=E.cb;
   ctx.save();ctx.beginPath();ctx.rect(0,0,W,662);ctx.clip();
   for(const c of CLOUDS){if(c.o>=cover||!c.cv)continue;const x=((c.x+T*c.v*E.wind)%1700)-200;ctx.drawImage(c.cv,x,c.y-c.h,c.w,c.h)}
@@ -639,6 +644,9 @@ function frame(){
   ctx.strokeStyle=css(col('#20242c',0),.85);ctx.lineWidth=1.4;ctx.beginPath();
   WIRES.forEach((w,i)=>{const mx=(w[0]+w[2])/2,my=(w[1]+w[3])/2+26+Math.sin(T*1.2+i)*2.5*E.wind;ctx.moveTo(w[0],w[1]);ctx.quadraticCurveTo(mx,my,w[2],w[3])});ctx.stroke();
   drawTrees();
+  // солнечный свет заливает часть вида слева — тёплым косым потоком
+  if(gs>0){const sx=262,sy=330+150*clamp((S.time-14)/4);ctx.save();ctx.globalCompositeOperation='soft-light';const lg=ctx.createLinearGradient(sx,sy,sx+900,sy+500);lg.addColorStop(0,`rgba(255,200,80,${.9*gs})`);lg.addColorStop(.55,`rgba(255,190,90,${.45*gs})`);lg.addColorStop(1,'rgba(255,190,90,0)');ctx.fillStyle=lg;ctx.fillRect(0,0,W,H);ctx.restore();
+    ctx.save();ctx.globalCompositeOperation='screen';const rg=ctx.createRadialGradient(sx,sy,0,sx,sy,700);rg.addColorStop(0,`rgba(255,214,120,${.45*gs})`);rg.addColorStop(1,'rgba(255,190,90,0)');ctx.fillStyle=rg;ctx.fillRect(0,0,W,H);ctx.restore()}
   // осадки
   const wx=S.weather,storm=wx==='storm',rn=S.rain||storm,sn=S.snowfall,weak=PWEAK()&&!storm;   // зимой дождь слабее; дождь+снег = мокрый снег
   if(rn){ctx.strokeStyle=`rgba(${wx==='overcast'&&E.amb>.5?'105,114,128':'200,215,235'},${storm?.5:sn?.26:weak?.24:.38})`;ctx.lineWidth=1.1;ctx.beginPath();const sl=storm?9:4,sp=storm?1500:1100;
