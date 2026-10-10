@@ -618,10 +618,9 @@ function frame(){
   if(E.g>.02){const ev=E.ev,gx=ev?120:1260,rg=ctx.createRadialGradient(gx,640,0,gx,640,1500);rg.addColorStop(0,css(E.sunc,.7*E.g));rg.addColorStop(1,'rgba(255,170,110,0)');ctx.fillStyle=rg;ctx.fillRect(0,0,W,700)}
   // облака
   // облака: готовые мягкие спрайты, у горизонта мельче, площе и медленнее, выше — крупнее
-  // «Солнце сквозь облака»: низкое жёлтое солнце выглядывает слева (запад) между облаками
+  // «Солнце сквозь облака»: низкое солнце левее окна (на западе), его не видно — только тёплый край неба и блики на крышах
   const gs=S.weather==='goldsun'?clamp((E.amb-.25)/.4):0;
-  if(gs>0){const sx=262,sy=330+150*clamp((S.time-14)/4),hg=ctx.createRadialGradient(sx,sy,0,sx,sy,90);hg.addColorStop(0,`rgba(255,236,160,${.8*gs})`);hg.addColorStop(.25,`rgba(255,214,120,${.35*gs})`);hg.addColorStop(1,'rgba(255,200,110,0)');ctx.fillStyle=hg;ctx.fillRect(sx-90,sy-90,180,180);
-    circ(ctx,sx,sy,30,`rgba(255,248,214,${gs})`)}
+  if(gs>0){const sx=262,sy=330+150*clamp((S.time-14)/4),hg=ctx.createLinearGradient(VX,0,VX+260,0);hg.addColorStop(0,`rgba(255,226,150,${.28*gs})`);hg.addColorStop(1,'rgba(255,220,150,0)');ctx.fillStyle=hg;ctx.fillRect(VX,0,260,sy+120);   /* солнца не видно — оно левее окна; только тёплый край неба */}
   const cover=S.weather==='overcast'||S.weather==='fog'?0:Math.max(WX[S.weather].cover,PK()?WX[PK()].cover:0),cb=E.cb;
   ctx.save();ctx.beginPath();ctx.rect(0,0,W,662);ctx.clip();
   for(const c of CLOUDS){if(c.o>=cover||!c.cv)continue;const x=((c.x+T*c.v*E.wind)%1700)-200;ctx.drawImage(c.cv,x,c.y-c.h,c.w,c.h)}
